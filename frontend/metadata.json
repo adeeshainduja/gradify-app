@@ -1,0 +1,6 @@
+{
+  "name": "Student Success Narrative",
+  "description": "An advanced academic management and student success platform that helps students monitor semesters, track subjects, assignments, exams, and analyze GPA trends.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
