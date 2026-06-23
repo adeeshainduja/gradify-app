@@ -1,605 +1,618 @@
-import React, { useState, useEffect } from 'react';
-import { Sidebar } from './components/Sidebar';
-import { Header } from './components/Header';
-import { DashboardView } from './components/DashboardView';
-import { SemestersView } from './components/SemestersView';
-import { SubjectsView } from './components/SubjectsView';
-import { AssignmentsView } from './components/AssignmentsView';
-import { ExamsView } from './components/ExamsView';
-import { AnalyticsView } from './components/AnalyticsView';
-import { ProfileView } from './components/ProfileView';
-import { NotificationsPanel } from './components/NotificationsPanel';
-import { NotificationCenterView } from './components/NotificationCenterView';
-import { LoginView } from './components/LoginView';
+import { useState, useEffect } from 'react';
+import Sidebar from './components/Sidebar';
+import DashboardView from './components/DashboardView';
+import SemestersView from './components/SemestersView';
+import SubjectsView from './components/SubjectsView';
+import AssignmentsView from './components/AssignmentsView';
+import ExamsView from './components/ExamsView';
+import GpaAnalyticsView from './components/GpaAnalyticsView';
+import NotificationsView from './components/NotificationsView';
+import ProfileView from './components/ProfileView';
 
-import { 
-  UserProfile, 
-  Semester, 
-  Subject, 
-  Assignment, 
-  Exam, 
-  NotificationItem, 
-  AcademicGoal, 
-  ActivityLog 
+// Import baseline preloaded data & types
+import {
+  Semester,
+  Subject,
+  Assignment,
+  Exam,
+  UserProfile,
+  Notification,
+  INITIAL_PROFILE,
+  INITIAL_SEMESTERS,
+  INITIAL_SUBJECTS,
+  INITIAL_ASSIGNMENTS,
+  INITIAL_EXAMS,
+  INITIAL_NOTIFICATIONS,
+  AssignmentStatus
 } from './types';
 
-import { 
-  INITIAL_PROFILE, 
-  INITIAL_SEMESTERS, 
-  INITIAL_SUBJECTS, 
-  INITIAL_ASSIGNMENTS, 
-  INITIAL_EXAMS, 
-  INITIAL_NOTIFICATIONS, 
-  INITIAL_GOALS, 
-  INITIAL_LOGS 
-} from './data';
+// Icons for custom widgets when needed
+import { Bell, Search, Star, LogOut, CheckCircle2, Sun, Moon, Menu } from 'lucide-react';
+
+const safeStorage = {
+  getItem: (key: string): string | null => {
+    try {
+      return localStorage.getItem(key);
+    } catch {
+      return null;
+    }
+  },
+  setItem: (key: string, value: string): void => {
+    try {
+      localStorage.setItem(key, value);
+    } catch {}
+  },
+  clear: (): void => {
+    try {
+      localStorage.clear();
+    } catch {}
+  }
+};
 
 export default function App() {
-  // --- Persistent Local Database State ---
-  const [profile, setProfile] = useState<UserProfile>(() => {
-    const saved = localStorage.getItem('gradify_profile');
-    return saved ? JSON.parse(saved) : INITIAL_PROFILE;
+  const [activeView, setActiveView] = useState('Dashboard');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    try {
+      const saved = safeStorage.getItem('gradify_theme');
+      if (saved === 'light' || saved === 'dark') return saved;
+    } catch {}
+    try {
+      if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        return 'dark';
+      }
+    } catch {}
+    return 'light';
   });
 
+  useEffect(() => {
+    const root = window.document.documentElement;
+    if (theme === 'dark') {
+      root.classList.add('dark');
+    } else {
+      root.classList.remove('dark');
+    }
+    safeStorage.setItem('gradify_theme', theme);
+  }, [theme]);
+
+  // SAFE INITIALIZATION HANDLERS FOR LOCAL STORAGE PERSISTENCE
   const [semesters, setSemesters] = useState<Semester[]>(() => {
-    const saved = localStorage.getItem('gradify_semesters');
-    return saved ? JSON.parse(saved) : INITIAL_SEMESTERS;
+    try {
+      const saved = safeStorage.getItem('gradify_semesters');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return INITIAL_SEMESTERS;
   });
 
   const [subjects, setSubjects] = useState<Subject[]>(() => {
-    const saved = localStorage.getItem('gradify_subjects');
-    return saved ? JSON.parse(saved) : INITIAL_SUBJECTS;
+    try {
+      const saved = safeStorage.getItem('gradify_subjects');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {}
+    return INITIAL_SUBJECTS;
   });
 
   const [assignments, setAssignments] = useState<Assignment[]>(() => {
-    const saved = localStorage.getItem('gradify_assignments');
-    return saved ? JSON.parse(saved) : INITIAL_ASSIGNMENTS;
+    try {
+      const saved = safeStorage.getItem('gradify_assignments');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {}
+    return INITIAL_ASSIGNMENTS;
   });
 
   const [exams, setExams] = useState<Exam[]>(() => {
-    const saved = localStorage.getItem('gradify_exams');
-    return saved ? JSON.parse(saved) : INITIAL_EXAMS;
+    try {
+      const saved = safeStorage.getItem('gradify_exams');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {}
+    return INITIAL_EXAMS;
   });
 
-  const [notifications, setNotifications] = useState<NotificationItem[]>(() => {
-    const saved = localStorage.getItem('gradify_notifications');
-    return saved ? JSON.parse(saved) : INITIAL_NOTIFICATIONS;
+  const [profile, setProfile] = useState<UserProfile>(() => {
+    try {
+      const saved = safeStorage.getItem('gradify_profile');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === 'object' && typeof parsed.name === 'string') {
+          return {
+            name: parsed.name,
+            major: parsed.major || INITIAL_PROFILE.major,
+            university: parsed.university || INITIAL_PROFILE.university,
+            targetGpa: typeof parsed.targetGpa === 'number' ? parsed.targetGpa : INITIAL_PROFILE.targetGpa,
+            gpaScale: (parsed.gpaScale === 4.0 || parsed.gpaScale === 5.0) ? parsed.gpaScale : INITIAL_PROFILE.gpaScale,
+            avatarUrl: parsed.avatarUrl
+          };
+        }
+      }
+    } catch {}
+    return INITIAL_PROFILE;
   });
 
-  const [goals, setGoals] = useState<AcademicGoal[]>(() => {
-    const saved = localStorage.getItem('gradify_goals');
-    return saved ? JSON.parse(saved) : INITIAL_GOALS;
+  const [notifications, setNotifications] = useState<Notification[]>(() => {
+    try {
+      const saved = safeStorage.getItem('gradify_notifications');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {}
+    return INITIAL_NOTIFICATIONS;
   });
 
-  const [activityLogs, setActivityLogs] = useState<ActivityLog[]>(() => {
-    const saved = localStorage.getItem('gradify_activity_logs');
-    return saved ? JSON.parse(saved) : INITIAL_LOGS;
-  });
+  // State to control prompt when quick-add is initiated on dashboard
+  const [forceOpenAssignmentForm, setForceOpenAssignmentForm] = useState(false);
 
-  // Active View Tab and Semester Context
-  const [activeTab, setActiveTab] = useState('dashboard');
-  const [currentSemesterId, setCurrentSemesterId] = useState('sem-5');
-  const [notificationOpen, setNotificationOpen] = useState(false);
-  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => {
-    return localStorage.getItem('ssp_is_logged_in') === 'true';
-  });
-
-  // --- Sync database to localStorage on modifications ---
+  // CACHING SYNC EFFECTS
   useEffect(() => {
-    localStorage.setItem('gradify_profile', JSON.stringify(profile));
-  }, [profile]);
-
-  useEffect(() => {
-    localStorage.setItem('gradify_semesters', JSON.stringify(semesters));
+    safeStorage.setItem('gradify_semesters', JSON.stringify(semesters));
   }, [semesters]);
 
   useEffect(() => {
-    localStorage.setItem('gradify_subjects', JSON.stringify(subjects));
+    safeStorage.setItem('gradify_subjects', JSON.stringify(subjects));
   }, [subjects]);
 
   useEffect(() => {
-    localStorage.setItem('gradify_assignments', JSON.stringify(assignments));
+    safeStorage.setItem('gradify_assignments', JSON.stringify(assignments));
   }, [assignments]);
 
   useEffect(() => {
-    localStorage.setItem('gradify_exams', JSON.stringify(exams));
+    safeStorage.setItem('gradify_exams', JSON.stringify(exams));
   }, [exams]);
 
   useEffect(() => {
-    localStorage.setItem('gradify_notifications', JSON.stringify(notifications));
+    safeStorage.setItem('gradify_profile', JSON.stringify(profile));
+  }, [profile]);
+
+  useEffect(() => {
+    safeStorage.setItem('gradify_notifications', JSON.stringify(notifications));
   }, [notifications]);
 
-  useEffect(() => {
-    localStorage.setItem('gradify_goals', JSON.stringify(goals));
-  }, [goals]);
-
-  useEffect(() => {
-    localStorage.setItem('gradify_activity_logs', JSON.stringify(activityLogs));
-  }, [activityLogs]);
-
-  // --- Dynamic GPAs & Statistics Recalculator engine ---
-  useEffect(() => {
-    // 1. Calculate SGPA of Active/Simulated Term
-    const termSubjects = subjects.filter(sub => sub.semesterId === currentSemesterId);
-    if (termSubjects.length === 0) return;
-
-    let totalCredits = 0;
-    let earnedHonorPoints = 0;
-
-    const translateToPoint = (val: number): number => {
-      if (val >= 93) return 4.0;
-      if (val >= 90) return 3.7;
-      if (val >= 87) return 3.3;
-      if (val >= 83) return 3.0;
-      if (val >= 80) return 2.7;
-      if (val >= 77) return 2.3;
-      if (val >= 73) return 2.0;
-      if (val >= 70) return 1.7;
-      return 1.0;
-    };
-
-    termSubjects.forEach(s => {
-      const point = translateToPoint(s.score);
-      earnedHonorPoints += point * s.credits;
-      totalCredits += s.credits;
-    });
-
-    const calculatedSgpa = totalCredits > 0 ? (earnedHonorPoints / totalCredits) : 0.0;
-    const roundedSgpa = Math.round(calculatedSgpa * 100) / 100;
-
-    // 2. Update current Semester SGPA in semesters list
-    let updatedSemesters = semesters.map(sem => {
-      if (sem.id === currentSemesterId) {
-        return {
-          ...sem,
-          sgpa: roundedSgpa,
-          totalCredits: totalCredits,
-          creditsEarned: termSubjects.filter(sub => sub.score >= 50).reduce((sm, sb) => sm + sb.credits, 0)
-        };
-      }
-      return sem;
-    });
-
-    // 3. Compute overall Cumulative GP (CGPA) from completed + active semesters list
-    const activeCompletedSemesters = updatedSemesters.filter(s => s.status === 'completed' || s.id === currentSemesterId);
-    let sumSgpa = 0;
-    let countedTerms = 0;
-    activeCompletedSemesters.forEach(s => {
-      if (s.sgpa > 0) {
-        sumSgpa += s.sgpa;
-        countedTerms += 1;
-      }
-    });
-
-    const calculatedCgpa = countedTerms > 0 ? Math.round((sumSgpa / countedTerms) * 100) / 100 : 3.78;
-
-    // Update state synchronously
-    setSemesters(updatedSemesters);
-    setProfile(prev => ({
-      ...prev,
-      gpa: roundedSgpa,
-      cgpa: calculatedCgpa
-    }));
-
-  }, [subjects, currentSemesterId]);
-
-  // --- Dynamic Actions Helpers ---
-
-  const addLog = (title: string, description: string, type: 'gpa' | 'submission' | 'preference' | 'exam') => {
-    const newLog: ActivityLog = {
-      id: `log-${Date.now()}`,
-      title,
-      description,
-      timestamp: "Just now",
-      type
-    };
-    setActivityLogs(prev => [newLog, ...prev.slice(0, 19)]);
-  };
-
-  const triggerNotification = (title: string, message: string, category: 'assignments' | 'exams' | 'gpa' | 'goals' | 'system', priority: 'low' | 'high' | 'critical') => {
-    const newNotification: NotificationItem = {
-      id: `not-${Date.now()}`,
+  // SYSTEM LOG UTILITY FOR NOTIFICATION TRIGGERS
+  const triggerNotification = (title: string, message: string, type: Notification['type'] = 'info') => {
+    const alert: Notification = {
+      id: `sys-${Math.random().toString()}`,
       title,
       message,
-      timeLabel: "Just now",
-      priority,
-      category,
-      isRead: false
+      type,
+      date: new Date().toISOString(),
+      read: false
     };
-    setNotifications(prev => [newNotification, ...prev]);
+    setNotifications(prev => [alert, ...prev]);
   };
 
-  // 1. Semester View Actions
-  const handleAddSemester = (
-    name: string, 
-    duration: string, 
-    totalCredits: number, 
-    expectedSgpa: number, 
-    status: 'completed' | 'active' | 'upcoming',
-    academicYear?: string,
-    startDate?: string,
-    endDate?: string
-  ) => {
+  // ----- SEMESTERS CRUDS -----
+  const handleAddSemester = (name: string, year: number, isCurrent: boolean) => {
     const newSem: Semester = {
-      id: `sem-${Date.now()}`,
+      id: `sem-${Math.random().toString()}`,
       name,
-      duration,
-      status,
-      subjectsCount: 0,
-      creditsEarned: status === 'completed' ? totalCredits : 0,
-      sgpa: expectedSgpa,
-      totalCredits,
-      completionRate: status === 'completed' ? 100 : 0,
-      academicYear: academicYear || new Date().getFullYear().toString(),
-      startDate: startDate || new Date().toISOString().split('T')[0],
-      endDate: endDate || new Date().toISOString().split('T')[0],
-      isArchived: false
+      year,
+      isCurrent: false // Will set cleanly below if true
     };
-    setSemesters(prev => [...prev, newSem]);
-    addLog("Semester Added", `Registered ${name} inside the portal.`, "preference");
-    triggerNotification("Semester Scheduled", `Successfully added ${name} trajectory goals.`, "system", "low");
+
+    let updatedSemesters = [...semesters, newSem];
+    if (isCurrent) {
+      updatedSemesters = updatedSemesters.map(s => s.id === newSem.id ? { ...s, isCurrent: true } : { ...s, isCurrent: false });
+    }
+    setSemesters(updatedSemesters);
+    triggerNotification('Semester Created', `Semester ${name} was added to curriculum ledger.`, 'success');
   };
 
-  const handleUpdateSemester = (updatedSem: Semester) => {
-    setSemesters(prev => prev.map(s => s.id === updatedSem.id ? updatedSem : s));
-    addLog("Semester Updated", `Updated ${updatedSem.name} details successfully.`, "preference");
+  const handleUpdateSemester = (id: string, name: string, year: number, isCurrent: boolean) => {
+    setSemesters(prev => {
+      const updated = prev.map(s => s.id === id ? { ...s, name, year, isCurrent } : s);
+      if (isCurrent) {
+        return updated.map(s => s.id === id ? { ...s, isCurrent: true } : { ...s, isCurrent: false });
+      }
+      return updated;
+    });
+    triggerNotification('Semester Updated', `Semester details for ${name} were revised.`, 'info');
   };
 
   const handleDeleteSemester = (id: string) => {
+    const target = semesters.find(s => s.id === id);
     setSemesters(prev => prev.filter(s => s.id !== id));
-    addLog("Semester Deleted", `Removed semester context allocation.`, "preference");
+    // Cascade erase subjects, assignments, and exams mapping to this semester
+    const targetSubIds = subjects.filter(s => s.semesterId === id).map(s => s.id);
+    setSubjects(prev => prev.filter(s => s.semesterId !== id));
+    setAssignments(prev => prev.filter(a => !targetSubIds.includes(a.subjectId)));
+    setExams(prev => prev.filter(e => !targetSubIds.includes(e.subjectId)));
+    
+    triggerNotification('Semester Wiped', `Erase operations deleted ${target?.name || 'semester'} and its course credentials cascading.`, 'warning');
   };
 
-  // 2. Course View Actions
-  const handleAddSubject = (
-    code: string, 
-    name: string, 
-    credits: number, 
-    lecturer: string, 
-    score: number, 
-    status: 'active' | 'completed' | 'upcoming',
-    targetSemesterId?: string,
-    description?: string
-  ) => {
-    const trans = (val: number): string => {
-      if (val >= 93) return 'A';
-      if (val >= 90) return 'A-';
-      if (val >= 87) return 'B+';
-      if (val >= 83) return 'B';
-      if (val >= 80) return 'B-';
-      return 'C';
+  const handleSetCurrentSemester = (id: string) => {
+    const target = semesters.find(s => s.id === id);
+    setSemesters(prev => prev.map(s => s.id === id ? { ...s, isCurrent: true } : { ...s, isCurrent: false }));
+    triggerNotification('Active Period Changed', `Active workbook pointer switched to ${target?.name || 'selected semester'}.`, 'info');
+  };
+
+  // ----- SUBJECTS CRUDS -----
+  const handleAddSubject = (newSub: Omit<Subject, 'id'>) => {
+    const payload: Subject = {
+      ...newSub,
+      id: `sub-${Math.random().toString()}`
     };
-    const newSub: Subject = {
-      id: `sub-${Date.now()}`,
-      code,
-      name,
-      credits,
-      lecturer,
-      grade: trans(score),
-      score,
-      progress: status === 'completed' ? 100 : 85,
-      status,
-      semesterId: targetSemesterId || currentSemesterId,
-      assignmentsProgress: status === 'completed' ? 100 : 85,
-      quizzesProgress: status === 'completed' ? 100 : 80,
-      midExamProgress: status === 'completed' ? 100 : 90,
-      description: description || ""
-    };
-    setSubjects(prev => [...prev, newSub]);
-    addLog("Course Added", `Added course ${code} under designated semester.`, "preference");
-    triggerNotification("Course Assigned", `Registered ${code}: ${name} to your tracking portfolio.`, "system", "low");
+    setSubjects(prev => [...prev, payload]);
+    triggerNotification('Course Registered', `Curricular record for ${newSub.code}: ${newSub.name} created.`, 'success');
+  };
+
+  const handleUpdateSubject = (id: string, updated: Partial<Subject>) => {
+    setSubjects(prev => prev.map(s => s.id === id ? { ...s, ...updated } : s));
+    triggerNotification('Course Adjusted', `Specifications for course ${updated.code || 'selected template'} updated.`, 'info');
   };
 
   const handleDeleteSubject = (id: string) => {
+    const target = subjects.find(s => s.id === id);
     setSubjects(prev => prev.filter(s => s.id !== id));
-    addLog("Course Removed", `Archived course metrics successfully.`, "preference");
+    // Cascade erase assignments & exams referencing this course
+    setAssignments(prev => prev.filter(a => a.subjectId !== id));
+    setExams(prev => prev.filter(e => e.subjectId !== id));
+
+    triggerNotification('Course Deleted', `Removed course ${target?.code || ''} and its associated graded credentials.`, 'warning');
   };
 
-  const handleUpdateSubjectGrade = (id: string, score: number, grade: string, assignmentsProgress: number, quizzesProgress: number, midExamProgress: number) => {
-    setSubjects(prev => prev.map(sub => {
-      if (sub.id === id) {
-        return {
-          ...sub,
-          score,
-          grade,
-          assignmentsProgress,
-          quizzesProgress,
-          midExamProgress
-        };
-      }
-      return sub;
-    }));
-    addLog("Grade Simulated", `Slid evaluation metric inputs to forecast overall scores.`, "gpa");
-  };
-
-  // 3. Assignment View Actions
-  const handleAddAssignment = (title: string, subjectId: string, dueDate: string, priority: 'low' | 'medium' | 'high' | 'critical', isGroup: boolean) => {
-    const subject = subjects.find(s => s.id === subjectId);
-    const newAsm: Assignment = {
-      id: `asm-${Date.now()}`,
-      title,
-      subjectId,
-      subjectName: subject ? subject.name : "Unassigned",
-      dueDate,
-      progress: 0,
-      status: 'pending',
-      priority,
-      isGroup
+  // ----- ASSIGNMENTS CRUDS -----
+  const handleAddAssignment = (newAssign: Omit<Assignment, 'id'>) => {
+    const payload: Assignment = {
+      ...newAssign,
+      id: `assign-${Math.random().toString()}`
     };
-    setAssignments(prev => [newAsm, ...prev]);
-    addLog("Assignment Created", `Assembled homework assignment titled: ${title}`, "submission");
-    triggerNotification("New Task Added", `Deadline set for ${dueDate}. Keep active!`, "assignments", "high");
+    setAssignments(prev => [payload, ...prev]);
+    triggerNotification('Task Scheduled', `Assignment "${newAssign.title}" logged in tasks workbook.`, 'info');
   };
 
-  const handleUpdateAssignmentStatus = (id: string, status: 'pending' | 'in_progress' | 'completed' | 'overdue', progress: number) => {
-    setAssignments(prev => prev.map(asm => {
-      if (asm.id === id) {
-        return { ...asm, status, progress };
-      }
-      return asm;
-    }));
-    addLog("Task State Modified", `Transferred homework assignment checkpoints.`, "submission");
-    if (status === 'completed') {
-      triggerNotification("Task Completed 🎉", `Pushed assignment goals to finished. Good work!`, "assignments", "low");
-    }
+  const handleUpdateAssignment = (id: string, updated: Partial<Assignment>) => {
+    setAssignments(prev => prev.map(a => a.id === id ? { ...a, ...updated } : a));
   };
 
   const handleDeleteAssignment = (id: string) => {
+    const target = assignments.find(a => a.id === id);
     setAssignments(prev => prev.filter(a => a.id !== id));
-    addLog("Task Archived", `Dropped planned task.`, "submission");
+    triggerNotification('Task Cleared', `Wiped item "${target?.title}" from curricular registry.`, 'warning');
   };
 
-  // 4. Exam Calendar Actions
-  const handleAddExam = (subjectId: string, type: string, date: string, timeRange: string, venue: string) => {
-    const subject = subjects.find(s => s.id === subjectId);
-    const newExam: Exam = {
-      id: `ex-${Date.now()}`,
-      subjectId,
-      subjectName: subject ? subject.name : "Elective Course",
-      subjectCode: subject ? subject.code : "EL-000",
-      type,
-      date,
-      timeRange,
-      venue,
-      status: 'upcoming'
-    };
-    setExams(prev => [...prev, newExam]);
-    addLog("Exam Allocated", `Scheduled ${type} calendar slot.`, "exam");
-    triggerNotification("Exam Slated", `Set schedule countdown for ${subject ? subject.code : 'test'}.`, "exams", "high");
-  };
-
-  const handleUpdateExamGrade = (id: string, score: number, grade: string) => {
-    setExams(prev => prev.map(ex => {
-      if (ex.id === id) {
-        return {
-          ...ex,
-          score,
-          grade,
-          status: 'completed'
-        };
+  const handleQuickToggleAssignment = (id: string) => {
+    setAssignments(prev => prev.map(a => {
+      if (a.id === id) {
+        let nextStatus: AssignmentStatus = 'Pending';
+        let updatedScore = a.score;
+        if (a.status === 'Pending') {
+          nextStatus = 'Submitted';
+          triggerNotification('Task Completed', `Submitted assignment "${a.title}". Nice progress!`, 'success');
+        } else if (a.status === 'Submitted') {
+          nextStatus = 'Graded';
+          updatedScore = a.maxScore; // Default to max points for quick toggles
+          triggerNotification('Grade Scored', `Assignment "${a.title}" graded. Complete details in Assignments panel.`, 'success');
+        } else {
+          nextStatus = 'Pending';
+          updatedScore = undefined;
+        }
+        return { ...a, status: nextStatus, score: updatedScore };
       }
-      return ex;
+      return a;
     }));
-    addLog("Exam Score Filed", `Assigned grade score of ${score}% to closed test slot.`, "gpa");
-    triggerNotification("Score Evaluated", `Closed exam slot tracking. Overall term stats updated!`, "exams", "low");
+  };
+
+  // ----- EXAMS CRUDS -----
+  const handleAddExam = (newExam: Omit<Exam, 'id'>) => {
+    const payload: Exam = {
+      ...newExam,
+      id: `exam-${Math.random().toString()}`
+    };
+    setExams(prev => [...prev, payload]);
+    triggerNotification('Exam Listed', `Scheduled: ${newExam.title}. Ready for preparation checks.`, 'success');
+  };
+
+  const handleUpdateExam = (id: string, updated: Partial<Exam>) => {
+    setExams(prev => prev.map(e => e.id === id ? { ...e, ...updated } : e));
+    if (updated.status === 'Completed' && updated.score !== undefined) {
+      const exam = exams.find(ex => ex.id === id);
+      triggerNotification('Exam Completed', `Recorded score ${updated.score}/${exam?.maxScore || 100} for ${exam?.title}.`, 'success');
+    }
   };
 
   const handleDeleteExam = (id: string) => {
     setExams(prev => prev.filter(e => e.id !== id));
-    addLog("Exam Drop", `Cleared scheduled exam slot.`, "exam");
+    triggerNotification('Exam Cancelled', 'Cleared examination event parameters.', 'info');
   };
 
-  // 5. Goal Planner Actions
-  const handleAddGoal = (title: string, current: number, target: number, subtitle: string) => {
-    const newGoal: AcademicGoal = {
-      id: `goal-${Date.now()}`,
-      title,
-      currentPercent: current,
-      targetPercent: target,
-      subtitle,
-      category: 'general'
-    };
-    setGoals(prev => [...prev, newGoal]);
-    addLog("Goal Registered", `Slated target: ${title}`, "preference");
+  // ----- PROFILE SETTINGS -----
+  const handleUpdateProfile = (updated: UserProfile) => {
+    setProfile(updated);
+    triggerNotification('Academic Identity Upgraded', 'System variables compiled to your new student targets.', 'success');
   };
 
-  const handleDeleteGoal = (id: string) => {
-    setGoals(prev => prev.filter(g => g.id !== id));
-    addLog("Goal Cleared", `Archived configured milestone.`, "preference");
+  // ----- NOTIFICATIONS CRUDS -----
+  const handleMarkRead = (id: string) => {
+    setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
   };
 
-  const handleUpdateGoalProgress = (id: string, current: number) => {
-    setGoals(prev => prev.map(g => {
-      if (g.id === id) {
-        return { ...g, currentPercent: current };
-      }
-      return g;
-    }));
+  const handleMarkAllRead = () => {
+    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    triggerNotification('Directory Cleared', 'Marked all system alerts as read.', 'info');
   };
 
-  // 6. User Profile Actions
-  const handleUpdateProfile = (updated: Partial<UserProfile>) => {
-    setProfile(prev => ({ ...prev, ...updated }));
-    addLog("Profile Saved", "Saved updated enrollment characteristics.", "preference");
-  };
-
-  const handleClearLogs = () => {
-    setActivityLogs([]);
-  };
-
-  // 7. Notification general helpers
-  const handleMarkAllAsRead = () => {
-    setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
-  };
-
-  const handleMarkAsRead = (id: string) => {
-    setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
-  };
-
-  const handleClearNotifications = () => {
+  const handleClearAll = () => {
     setNotifications([]);
   };
 
-  const unreadCount = notifications.filter(n => !n.isRead).length;
+  const handleDeleteNotification = (id: string) => {
+    setNotifications(prev => prev.filter(n => n.id !== id));
+  };
 
-  // --- View router switch ---
-  const renderActiveView = () => {
-    switch (activeTab) {
-      case 'dashboard':
-        return (
-          <DashboardView 
-            semesters={semesters}
-            subjects={subjects}
-            assignments={assignments}
-            exams={exams}
-            goals={goals}
-            profile={profile}
-            currentSemesterId={currentSemesterId}
-            setActiveTab={setActiveTab}
-            onAddQuickAssignment={handleAddAssignment}
-          />
-        );
-      case 'semesters':
-        return (
-          <SemestersView 
-            semesters={semesters}
-            subjects={subjects}
-            currentSemesterId={currentSemesterId}
-            setCurrentSemesterId={setCurrentSemesterId}
-            onAddSemester={handleAddSemester}
-            onDeleteSemester={handleDeleteSemester}
-            onUpdateSemester={handleUpdateSemester}
-            setActiveTab={setActiveTab}
-          />
-        );
-      case 'subjects':
-        return (
-          <SubjectsView 
-            subjects={subjects}
-            semesters={semesters}
-            currentSemesterId={currentSemesterId}
-            onAddSubject={handleAddSubject}
-            onDeleteSubject={handleDeleteSubject}
-            onUpdateSubjectGrade={handleUpdateSubjectGrade}
-            setSubjects={setSubjects}
-            setActiveTab={setActiveTab}
-          />
-        );
-      case 'assignments':
-        return (
-          <AssignmentsView 
-            assignments={assignments}
-            subjects={subjects}
-            semesters={semesters}
-            onAddAssignment={handleAddAssignment}
-            onUpdateAssignmentStatus={handleUpdateAssignmentStatus}
-            onDeleteAssignment={handleDeleteAssignment}
-            setAssignments={setAssignments}
-            setActiveTab={setActiveTab}
-          />
-        );
-      case 'exams':
-        return (
-          <ExamsView 
-            exams={exams}
-            subjects={subjects}
-            onAddExam={handleAddExam}
-            onUpdateExamGrade={handleUpdateExamGrade}
-            onDeleteExam={handleDeleteExam}
-            setActiveTab={setActiveTab}
-          />
-        );
-      case 'analytics':
-        return (
-          <AnalyticsView 
-            semesters={semesters}
-            goals={goals}
-            onAddGoal={handleAddGoal}
-            onDeleteGoal={handleDeleteGoal}
-            onUpdateGoalProgress={handleUpdateGoalProgress}
-            setActiveTab={setActiveTab}
-          />
-        );
-      case 'profile':
-        return (
-          <ProfileView 
-            profile={profile}
-            activityLogs={activityLogs}
-            onUpdateProfile={handleUpdateProfile}
-            onClearLogs={handleClearLogs}
-            setActiveTab={setActiveTab}
-          />
-        );
-      case 'notifications':
-        return (
-          <NotificationCenterView 
-            notifications={notifications}
-            unreadCount={unreadCount}
-            onMarkAsRead={handleMarkAsRead}
-            onMarkAllAsRead={handleMarkAllAsRead}
-            onClearAll={handleClearNotifications}
-            setActiveTab={setActiveTab}
-          />
-        );
-      default:
-        return <div className="text-center py-12 text-slate-400">View not constructed yet.</div>;
+  // ----- GLOBAL DATA CONTROL UTILITIES -----
+  const handleResetData = () => {
+    setSemesters(INITIAL_SEMESTERS);
+    setSubjects(INITIAL_SUBJECTS);
+    setAssignments(INITIAL_ASSIGNMENTS);
+    setExams(INITIAL_EXAMS);
+    setProfile(INITIAL_PROFILE);
+    setNotifications(INITIAL_NOTIFICATIONS);
+    triggerNotification('System Restoration', 'Database has been wiped back to preloaded curriculums.', 'info');
+  };
+
+  const handleExportData = () => {
+    const exportPacket = {
+      semesters,
+      subjects,
+      assignments,
+      exams,
+      profile,
+      notifications
+    };
+    return JSON.stringify(exportPacket, null, 2);
+  };
+
+  const handleRestoreImportData = (rawJson: string): boolean => {
+    try {
+      const parsed = JSON.parse(rawJson);
+      
+      // Structural integrity validations
+      if (
+        Array.isArray(parsed.semesters) &&
+        Array.isArray(parsed.subjects) &&
+        Array.isArray(parsed.assignments) &&
+        Array.isArray(parsed.exams) &&
+        parsed.profile
+      ) {
+        setSemesters(parsed.semesters);
+        setSubjects(parsed.subjects);
+        setAssignments(parsed.assignments);
+        setExams(parsed.exams);
+        setProfile(parsed.profile);
+        if (Array.isArray(parsed.notifications)) {
+          setNotifications(parsed.notifications);
+        }
+        triggerNotification('Database Swapped', 'Restored complete database parameters successfully.', 'success');
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
     }
   };
 
-  if (!isLoggedIn) {
-    return <LoginView onLoginSuccess={() => setIsLoggedIn(true)} />;
-  }
+  // Dashboard quick triggers redirect to Assignments + force Open form
+  const handleAddAssignmentQuickTrigger = () => {
+    setForceOpenAssignmentForm(true);
+    setActiveView('Assignments');
+  };
+
+  // Render the currently selected sub-view
+  const renderContentView = () => {
+    switch (activeView) {
+      case 'Dashboard':
+        return (
+          <DashboardView
+            semesters={semesters}
+            subjects={subjects}
+            assignments={assignments}
+            exams={exams}
+            profile={profile}
+            setActiveView={setActiveView}
+            onQuickToggleAssignment={handleQuickToggleAssignment}
+            onAddAssignmentQuick={handleAddAssignmentQuickTrigger}
+          />
+        );
+      case 'Semesters':
+        return (
+          <SemestersView
+            semesters={semesters}
+            subjects={subjects}
+            onAddSemester={handleAddSemester}
+            onUpdateSemester={handleUpdateSemester}
+            onDeleteSemester={handleDeleteSemester}
+            onSetCurrentSemester={handleSetCurrentSemester}
+          />
+        );
+      case 'Subjects':
+        return (
+          <SubjectsView
+            semesters={semesters}
+            subjects={subjects}
+            onAddSubject={handleAddSubject}
+            onUpdateSubject={handleUpdateSubject}
+            onDeleteSubject={handleDeleteSubject}
+          />
+        );
+      case 'Assignments':
+        return (
+          <AssignmentsView
+            subjects={subjects}
+            assignments={assignments}
+            onAddAssignment={handleAddAssignment}
+            onUpdateAssignment={handleUpdateAssignment}
+            onDeleteAssignment={handleDeleteAssignment}
+            initialOpenAddForm={forceOpenAssignmentForm}
+          />
+        );
+      case 'Exams':
+        return (
+          <ExamsView
+            subjects={subjects}
+            exams={exams}
+            onAddExam={handleAddExam}
+            onUpdateExam={handleUpdateExam}
+            onDeleteExam={handleDeleteExam}
+          />
+        );
+      case 'GPA & Analytics':
+        return (
+          <GpaAnalyticsView
+            semesters={semesters}
+            subjects={subjects}
+            profile={profile}
+          />
+        );
+      case 'Notifications':
+        return (
+          <NotificationsView
+            notifications={notifications}
+            onMarkRead={handleMarkRead}
+            onMarkAllRead={handleMarkAllRead}
+            onClearAll={handleClearAll}
+            onDeleteNotification={handleDeleteNotification}
+          />
+        );
+      case 'Profile':
+      case 'Settings':
+        return (
+          <ProfileView
+            profile={profile}
+            onUpdateProfile={handleUpdateProfile}
+            onResetData={handleResetData}
+            onRestoreImportData={handleRestoreImportData}
+            onExportData={handleExportData}
+          />
+        );
+      case 'Logout':
+        return (
+          <div className="bg-white border rounded-2xl p-12 text-center text-slate-500 max-w-lg mx-auto shadow-sm">
+            <LogOut className="text-red-500 mx-auto mb-3" size={40} />
+            <h3 className="text-xl font-bold font-headline text-slate-900 mb-2">Simulate Exit session</h3>
+            <p className="text-xs text-slate-400 font-sans mb-6">
+              Logout clears temporary memory caches. Because persistent state is cached, your local changes are saved on this client.
+            </p>
+            <div className="flex gap-3 justify-center">
+              <button
+                onClick={() => {
+                  safeStorage.clear();
+                  window.location.reload();
+                }}
+                className="bg-red-600 hover:bg-red-700 text-white font-bold text-xs px-4 py-2 rounded-xl transition-all"
+              >
+                Clear Cache &amp; Reset App
+              </button>
+              <button
+                onClick={() => setActiveView('Dashboard')}
+                className="bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs px-4 py-2 rounded-xl"
+              >
+                Return to Dashboard
+              </button>
+            </div>
+          </div>
+        );
+      default:
+        return <div className="p-4">Under Construction</div>;
+    }
+  };
+
+  // Sync state variables whenever redirected from other views
+  useEffect(() => {
+    if (activeView !== 'Assignments') {
+      setForceOpenAssignmentForm(false);
+    }
+  }, [activeView]);
+
+  const unreadCount = notifications.filter(n => !n.read).length;
 
   return (
-    <div id="gradify-viewport" className="flex h-screen bg-[#fafbfc] overflow-hidden antialiased">
-      
-      {/* 1. Left Vertical Nav Bar */}
+    <div className="flex min-h-screen bg-[var(--background)]">
+      {/* Sidebar Navigation */}
       <Sidebar 
-        activeTab={activeTab} 
-        setActiveTab={setActiveTab} 
-        profile={profile} 
-        unreadCount={unreadCount}
-        onLogout={() => {
-          localStorage.removeItem('ssp_is_logged_in');
-          setIsLoggedIn(false);
-        }}
+        activeView={activeView} 
+        setActiveView={setActiveView} 
+        isOpen={isSidebarOpen} 
+        onClose={() => setIsSidebarOpen(false)} 
       />
-
-      {/* 2. Main content flow (Header + active viewport view) */}
-      <div id="gradify-window-canvas" className="flex-1 flex flex-col h-full overflow-hidden">
+      
+      {/* Main Content Pane */}
+      <main className="flex-1 ml-0 md:ml-64 p-4 sm:p-8 min-h-screen max-w-7xl w-full overflow-x-hidden">
         
-        {/* Dynamic header row */}
-        <Header 
-          currentSemesterId={currentSemesterId}
-          setCurrentSemesterId={setCurrentSemesterId}
-          semesters={semesters}
-          unreadCount={unreadCount}
-          activeTab={activeTab}
-          profile={profile}
-          setNotificationOpen={setNotificationOpen}
-          setActiveTab={setActiveTab}
-        />
-
-        {/* View Layout context */}
-        <main id="gradify-viewport-flow" className="flex-1 overflow-y-auto px-8 py-6">
-          <div className="max-w-6xl mx-auto pb-12 animate-fade-in">
-            {renderActiveView()}
+        {/* Real-time Header */}
+        <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8 pb-4 border-b border-slate-200/60">
+          <div className="flex items-center gap-3 w-full sm:w-auto">
+            <button
+              onClick={() => setIsSidebarOpen(true)}
+              className="md:hidden p-2 -ml-2 text-slate-500 hover:bg-slate-100 rounded-xl cursor-pointer shrink-0"
+              title="Open Navigation Menu"
+            >
+              <Menu size={24} />
+            </button>
+            <div>
+              <h2 className="text-2xl sm:text-3xl font-extrabold font-headline tracking-tight text-slate-950">{activeView}</h2>
+              <p className="text-xs text-slate-400 font-sans mt-0.5">Welcome back to your academic workbook tracker.</p>
+            </div>
           </div>
-        </main>
+          
+          <div className="flex items-center gap-4 self-stretch sm:self-auto justify-between">
+            {/* Theme Toggle Button */}
+            <button
+              onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
+              className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-all shrink-0 cursor-pointer"
+              title={theme === 'light' ? 'Switch to Dark Mode' : 'Switch to Light Mode'}
+              id="theme-toggle-btn"
+            >
+              {theme === 'light' ? <Moon size={20} className="text-slate-500" /> : <Sun size={20} className="text-amber-400 hover:text-amber-300" />}
+            </button>
 
-      </div>
+            {/* Direct alert icons helper */}
+            <button
+              onClick={() => setActiveView('Notifications')}
+              className="relative p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-colors shrink-0"
+              title="Notifications Center"
+            >
+              <Bell size={20} />
+              {unreadCount > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 w-4.5 h-4.5 bg-red-500 rounded-full text-[9px] font-bold text-white flex items-center justify-center border-2 border-white select-none animate-bounce">
+                  {unreadCount}
+                </span>
+              )}
+            </button>
 
-      {/* 3. Notifications sliding tray panel */}
-      <NotificationsPanel 
-        isOpen={notificationOpen}
-        onClose={() => setNotificationOpen(false)}
-        notifications={notifications}
-        onMarkAllAsRead={handleMarkAllAsRead}
-        onMarkAsRead={handleMarkAsRead}
-        onClearAll={handleClearNotifications}
-        setActiveTab={setActiveTab}
-      />
+            <button 
+              onClick={() => setActiveView('Profile')}
+              className="flex items-center gap-2.5 text-left hover:bg-slate-100/50 p-1 px-2 rounded-xl transition-all"
+            >
+              <div className="text-right hidden sm:block">
+                <span className="text-xs font-bold text-slate-900 block font-sans">{profile.name}</span>
+                <span className="text-[10px] text-slate-400 block font-sans truncate max-w-[120px]">{profile.major}</span>
+              </div>
+              <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-blue-500 to-indigo-600 border border-blue-200 flex items-center justify-center font-black text-white text-sm shrink-0 shadow-xs">
+                {profile.name.substring(0, 2).toUpperCase()}
+              </div>
+            </button>
+          </div>
+        </header>
 
+        {/* Dynamic visual view rendering */}
+        <section className="animate-fadeIn">
+          {renderContentView()}
+        </section>
+
+      </main>
     </div>
   );
 }

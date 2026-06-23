@@ -1,6 +1,6 @@
 {
-  "name": "Student Success Narrative",
-  "description": "An advanced academic management and student success platform that helps students monitor semesters, track subjects, assignments, exams, and analyze GPA trends.",
+  "name": "Gradify",
+  "description": "Academic management platform for students.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

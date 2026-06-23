@@ -1,42 +1,461 @@
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@600;800&family=Inter:wght@400;600&family=JetBrains+Mono:wght@500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Manrope:wght@600;800&family=JetBrains+Mono:wght@500&display=swap');
 @import "tailwindcss";
 
 @theme {
-  --font-sans: 'Inter', sans-serif;
-  --font-display: 'Manrope', sans-serif;
-  --font-mono: 'JetBrains Mono', monospace;
-
-  --color-primary: var(--primary);
-  --color-secondary: var(--secondary);
-  --color-background: var(--background);
-  --color-surface: var(--surface);
-  --color-on-background: var(--on-background);
-  --color-surface-variant: var(--surface-variant);
-  --color-outline: var(--outline);
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-headline: "Manrope", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
 }
 
+/* Base custom definitions and styling for Dark/Light Mode Theme (Lumina Academic) */
 :root {
-  --primary: #0040e0;
-  --secondary: #6b38d4;
-  --background: #f8f9ff;
+  /* Colors - Light Mode Base */
   --surface: #f8f9ff;
-  --on-background: #0b1c30;
-  --surface-variant: #d3e4fe;
+  --surface-dim: #cbdbf5;
+  --surface-bright: #f8f9ff;
+  --surface-container-lowest: #ffffff;
+  --surface-container-low: #eff4ff;
+  --surface-container: #e5eeff;
+  --surface-container-high: #dce9ff;
+  --surface-container-highest: #d3e4fe;
+  --on-surface: #0b1c30;
+  --on-surface-variant: #434656;
+  --inverse-surface: #213145;
+  --inverse-on-surface: #eaf1ff;
   --outline: #747688;
+  --outline-variant: #c4c5d9;
+  --surface-tint: #124af0;
+  --primary: #0040e0;
+  --on-primary: #ffffff;
+  --primary-container: #2e5bff;
+  --on-primary-container: #efefff;
+  --inverse-primary: #b8c3ff;
+  --secondary: #6b38d4;
+  --on-secondary: #ffffff;
+  --secondary-container: #8455ef;
+  --on-secondary-container: #fffbff;
+  --tertiary: #4d556b;
+  --on-tertiary: #ffffff;
+  --tertiary-container: #656d84;
+  --on-tertiary-container: #eef0ff;
+  --error: #ba1a1a;
+  --on-error: #ffffff;
+  --error-container: #ffdad6;
+  --on-error-container: #93000a;
+  
+  --background: #f8f9ff;
+  --on-background: #0b1c30;
+  --border: #eff4ff;
+  --border-strong: #cbdbf5;
+  
+  --shadow-main: 0 4px 18px rgba(15, 23, 42, 0.08);
+  --thinned-weight: 400;
+  --medium-weight: 500;
+  --semibold-weight: 600;
 }
 
 .dark {
-  --primary: #b8c3ff;
-  --secondary: #d0bcff;
-  --background: #020617;
-  --surface: #0f172a;
-  --on-background: #f8f9ff;
-  --surface-variant: #1e293b;
+  /* Colors - Dark Mode Foundation for Deep Work */
+  --surface: #0f172a;               /* Level 1 (Cards/Sidebar) */
+  --surface-dim: #020617;           /* Level 0 */
+  --surface-bright: #1e293b;        /* Level 2 */
+  --surface-container-lowest: #0f172a; /* Level 1 */
+  --surface-container-low: #0f172a;  /* Level 1 */
+  --surface-container: #0f172a;      /* Level 1 */
+  --surface-container-high: #1e293b; /* Level 2 (Modals/Popovers) */
+  --surface-container-highest: #334155; /* Level 3 */
+  
+  --on-surface: #eaf1ff;            /* high contrast ratio >= 7:1 */
+  --on-surface-variant: #94a3b8;    /* thinned text support */
+  --inverse-surface: #eaf1ff;
+  --inverse-on-surface: #0b1c30;
+  
+  /* Outline, Stroke */
   --outline: #475569;
+  --outline-variant: #334155;
+  --surface-tint: #38bdf8;          /* digital neon blue */
+  
+  /* Primary & secondary neon clarities */
+  --primary: #3b82f6;               
+  --on-primary: #ffffff;
+  --primary-container: #1d4ed8;
+  --on-primary-container: #dbeafe;
+  
+  --secondary: #8b5cf6;             /* purple neon details */
+  --on-secondary: #ffffff;
+  --secondary-container: #6d28d9;
+  --on-secondary-container: #ede9fe;
+  
+  --tertiary: #94a3b8;
+  --on-tertiary: #0f172a;
+  --tertiary-container: #475569;
+  --on-tertiary-container: #f1f5f9;
+  
+  --error: #ef4444;
+  --on-error: #ffffff;
+  --error-container: #7f1d1d;
+  --on-error-container: #fecaca;
+  
+  --background: #020617;            /* Level 0 Background */
+  --on-background: #eaf1ff;
+  --border: #1e293b;                /* Level 2 borders */
+  --border-strong: #334155;
+  
+  --shadow-main: none;
+  --thinned-weight: 350;            /* slightly thinned out to compensate light bleed */
+  --medium-weight: 450;
+  --semibold-weight: 550;
 }
 
-body {
-  font-family: var(--font-sans);
+/* Custom Display Typographies based on spec sheet */
+.font-display-lg {
+  font-family: 'Manrope', sans-serif;
+  font-size: 32px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+@media (min-width: 600px) {
+  .font-display-lg {
+    font-size: 48px;
+    letter-spacing: -0.02em;
+  }
+}
+
+.font-headline-md {
+  font-family: 'Manrope', sans-serif;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.font-body-lg {
+  font-family: 'Inter', sans-serif;
+  font-size: 18px;
+  font-weight: var(--thinned-weight);
+  line-height: 1.6;
+}
+
+.font-body-md {
+  font-family: 'Inter', sans-serif;
+  font-size: 16px;
+  font-weight: var(--thinned-weight);
+  line-height: 1.6;
+}
+
+.font-label-sm {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.5;
+  letter-spacing: 0.05em;
+}
+
+/* Base resets & typography application */
+html, body {
   background-color: var(--background);
   color: var(--on-background);
+  font-family: 'Inter', sans-serif;
+  font-weight: var(--thinned-weight);
+  transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+/* Global Corporate Modern themes over existing classes in Dark Mode */
+.dark body {
+  background-color: var(--background);
+  color: var(--on-background);
+}
+
+/* Clear the app shell muddy background */
+.dark .bg-slate-50\/50 {
+  background-color: rgba(255, 255, 255, 0.045) !important;
+}
+
+/* Elevated Form Sheet panels and inline cards in Dark Mode */
+.dark .bg-slate-50 {
+  background-color: var(--surface-bright) !important;
+  color: var(--on-surface) !important;
+}
+
+.dark .bg-slate-50\/30 {
+  background-color: rgba(255, 255, 255, 0.025) !important;
+}
+
+.dark .bg-slate-50\/40 {
+  background-color: rgba(255, 255, 255, 0.035) !important;
+}
+
+.dark .bg-slate-50\/70 {
+  background-color: rgba(255, 255, 255, 0.06) !important;
+  color: var(--on-surface) !important;
+}
+
+.dark .bg-slate-100\/80 {
+  background-color: rgba(30, 41, 59, 0.8) !important;
+}
+
+/* Standard tab switch container overlays in Dark Mode */
+.dark .bg-slate-100 {
+  background-color: var(--surface-dim) !important; /* Level 0 Dark Inset */
+  border: 1px solid var(--border) !important;
+}
+
+.dark .bg-slate-100 button {
+  color: var(--on-surface-variant) !important;
+}
+
+.dark .bg-slate-100 button.bg-white {
+  background-color: var(--surface-bright) !important; /* Level 2 bright raised active tab */
+  color: var(--on-surface) !important;
+}
+
+/* Standard White Cards override */
+.dark .bg-white {
+  background-color: var(--surface) !important;
+  color: var(--on-surface) !important;
+}
+
+/* Badge colors, alert tags, and high-contrast indicators override */
+.dark .bg-emerald-50 {
+  background-color: rgba(16, 185, 129, 0.15) !important;
+  color: #34d399 !important;
+}
+.dark .text-emerald-800, .dark .text-emerald-700, .dark .text-emerald-600 {
+  color: #34d399 !important;
+}
+.dark .border-emerald-100, .dark .border-emerald-200 {
+  border-color: rgba(16, 185, 129, 0.3) !important;
+}
+
+.dark .bg-amber-50 {
+  background-color: rgba(245, 158, 11, 0.15) !important;
+  color: #fbbf24 !important;
+}
+.dark .text-amber-800, .dark .text-amber-700, .dark .text-amber-600 {
+  color: #fbbf24 !important;
+}
+.dark .border-amber-100, .dark .border-amber-200 {
+  border-color: rgba(245, 158, 11, 0.3) !important;
+}
+
+.dark .bg-blue-50,
+.dark .bg-blue-50\/35,
+.dark .bg-blue-50\/20 {
+  background-color: rgba(59, 130, 246, 0.15) !important;
+  color: #60a5fa !important;
+}
+.dark .text-blue-800, .dark .text-blue-700, .dark .text-blue-600 {
+  color: #60a5fa !important;
+}
+.dark .border-blue-100,
+.dark .border-blue-200,
+.dark .border-blue-100\/30 {
+  border-color: rgba(59, 130, 246, 0.3) !important;
+}
+.dark .border-slate-100\/50 {
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+.dark .bg-red-50, .dark .bg-pink-50 {
+  background-color: rgba(239, 68, 68, 0.15) !important;
+  color: #f87171 !important;
+}
+.dark .text-red-800, .dark .text-red-700, .dark .text-red-600, .dark .text-pink-700, .dark .text-pink-600 {
+  color: #f87171 !important;
+}
+.dark .border-red-100, .dark .border-red-200 {
+  border-color: rgba(239, 68, 68, 0.3) !important;
+}
+
+.dark .bg-indigo-50 {
+  background-color: rgba(99, 102, 241, 0.15) !important;
+  color: #818cf8 !important;
+}
+.dark .text-indigo-700, .dark .text-indigo-600 {
+  color: #818cf8 !important;
+}
+
+.dark .bg-purple-50 {
+  background-color: rgba(168, 85, 247, 0.15) !important;
+  color: #c084fc !important;
+}
+.dark .text-purple-700, .dark .text-purple-600 {
+  color: #c084fc !important;
+}
+
+.dark .bg-cyan-50 {
+  background-color: rgba(6, 182, 212, 0.15) !important;
+  color: #22d3ee !important;
+}
+.dark .text-cyan-700, .dark .text-cyan-600 {
+  color: #22d3ee !important;
+}
+
+/* Hover effects inside Dark Mode */
+.dark .hover\:bg-slate-50:hover {
+  background-color: var(--surface-bright) !important;
+}
+
+.dark .hover\:bg-slate-100:hover {
+  background-color: var(--surface-container-highest) !important;
+}
+
+.dark .hover\:bg-white:hover {
+  background-color: var(--surface-bright) !important;
+}
+
+.dark .hover\:bg-blue-100:hover {
+  background-color: rgba(59, 130, 246, 0.25) !important;
+}
+.dark .hover\:bg-emerald-100:hover {
+  background-color: rgba(16, 185, 129, 0.25) !important;
+}
+.dark .hover\:bg-indigo-100:hover {
+  background-color: rgba(99, 102, 241, 0.25) !important;
+}
+.dark .hover\:bg-rose-100:hover {
+  background-color: rgba(244, 63, 94, 0.25) !important;
+}
+.dark .hover\:bg-amber-100:hover {
+  background-color: rgba(245, 158, 11, 0.25) !important;
+}
+.dark .hover\:bg-purple-100:hover {
+  background-color: rgba(168, 85, 247, 0.25) !important;
+}
+.dark .hover\:bg-cyan-100:hover {
+  background-color: rgba(6, 182, 212, 0.25) !important;
+}
+
+/* Clean up borders on all panels and cards */
+.dark .border,
+.dark [class*="border-slate-"] {
+  border-color: var(--border) !important;
+}
+
+/* Inner borders 1px at 10% white opacity for modal elements (like dialog inputs) */
+.dark .modal-inner-stroke {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Specific text overrides for high contrast readability */
+.dark .text-slate-950,
+.dark .text-slate-900,
+.dark .text-slate-800 {
+  color: var(--on-surface) !important;
+}
+
+.dark .text-slate-700,
+.dark .text-slate-600,
+.dark .text-slate-500,
+.dark .text-slate-400 {
+  color: var(--on-surface-variant) !important;
+}
+
+.dark .text-blue-700, .dark .text-blue-600 {
+  color: var(--primary) !important;
+}
+
+.dark .border-blue-700, .dark .border-blue-600 {
+  border-color: var(--primary) !important;
+}
+
+.dark .bg-blue-600, .dark .bg-blue-700 {
+  background-color: var(--primary) !important;
+}
+
+.dark .hover\:bg-blue-700:hover {
+  background-color: var(--primary-container) !important;
+}
+
+/* Custom SVG Graph colors and gradients inside Dark Mode */
+.dark svg line[stroke="#f1f5f9"] {
+  stroke: var(--border) !important;
+}
+
+.dark svg line[stroke="#e2e8f0"] {
+  stroke: var(--outline-variant) !important;
+}
+
+.dark svg stop[stopColor="#ffffff"] {
+  stop-color: var(--background) !important;
+}
+
+.dark svg stop[offset="100%"] {
+  stop-color: var(--background) !important;
+}
+
+.dark svg fill-slate-800,
+.dark svg .fill-slate-800 {
+  fill: var(--on-surface) !important;
+}
+
+.dark svg fill-slate-400,
+.dark svg .fill-slate-400 {
+  fill: var(--on-surface-variant) !important;
+}
+
+.dark svg text {
+  fill: var(--on-surface-variant) !important;
+}
+
+.dark svg text.fill-slate-800 {
+  fill: var(--on-surface) !important;
+}
+
+/* Sidebar Specific classes */
+.dark aside {
+  background-color: var(--surface) !important;
+  border-right-color: var(--border) !important;
+}
+
+.dark aside button.text-blue-700 {
+  background-color: rgba(59, 130, 246, 0.12) !important;
+  color: var(--primary) !important;
+}
+
+.dark aside button:hover:not(.text-blue-700) {
+  background-color: var(--border) !important;
+}
+
+/* Form controls customization (Soft shapes 4px on input details) */
+.dark input, .dark select, .dark textarea {
+  background-color: var(--surface-dim) !important;
+  border-color: var(--border) !important;
+  color: var(--on-surface) !important;
+}
+
+.dark input:focus, .dark select:focus, .dark textarea:focus {
+  border-color: var(--primary) !important;
+  background-color: var(--surface-bright) !important;
+}
+
+/* Elevation transitions */
+.bg-white, .bg-slate-50, .border, input, button, select, textarea {
+  transition: background-color 0.25s ease, border-color 0.25s ease, color 0.1s ease;
+}
+
+/* Apply Soft roundings (0.25rem = rounded, 0.5rem = rounded-lg, 0.75rem = rounded-xl) from layout spec */
+.rounded, input, select, textarea, button {
+  border-radius: 4px !important; /* 0.25rem soft base */
+}
+
+.rounded-lg, .rounded-xl {
+  border-radius: 8px !important; /* Cards & Large Containers rounded-lg */
+}
+
+/* Recharts grid lines inside charts */
+.recharts-cartesian-grid-horizontal line,
+.recharts-cartesian-grid-vertical line {
+  stroke: var(--border) !important;
+  opacity: 0.8 !important;
+}
+
+/* Make shadow styling gorgeous and soft with slate blue theme in light mode */
+.shadow-sm {
+  box-shadow: var(--shadow-main) !important;
+}
+
+.dark .shadow-sm {
+  box-shadow: none !important;
+  border: 1px solid var(--border) !important;
 }
