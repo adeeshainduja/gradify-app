@@ -1,4 +1,5 @@
 import { LayoutDashboard, CalendarDays, BookOpen, FileText, GraduationCap, BarChart3, Bell, User, Settings, LogOut, X } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
 export const navItems = [
   { name: 'Dashboard', icon: LayoutDashboard },
@@ -27,6 +28,7 @@ export default function Sidebar({
   isOpen?: boolean;
   onClose?: () => void;
 }) {
+  const { logout } = useAuth();
   return (
     <>
       {/* Dynamic mobile background mask overlay */}
@@ -85,11 +87,17 @@ export default function Sidebar({
               <button
                 key={item.name}
                 onClick={() => {
+                  if (item.name === 'Logout') {
+                    logout();
+                    return;
+                  }
                   setActiveView(item.name);
                   if (onClose) onClose();
                 }}
                 className={`flex w-full items-center gap-3 px-4 py-3 rounded-lg transition-colors cursor-pointer ${
-                  isActive ? 'text-blue-700 bg-blue-50 font-bold border-l-2 border-blue-700' : 'text-slate-600 hover:bg-slate-50'
+                  item.name === 'Logout'
+                    ? 'text-red-500 hover:bg-red-50'
+                    : isActive ? 'text-blue-700 bg-blue-50 font-bold border-l-2 border-blue-700' : 'text-slate-600 hover:bg-slate-50'
                 }`}
               >
                 <Icon size={20} />
