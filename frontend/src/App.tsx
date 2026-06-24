@@ -8,6 +8,9 @@ import ExamsView from './components/ExamsView';
 import GpaAnalyticsView from './components/GpaAnalyticsView';
 import NotificationsView from './components/NotificationsView';
 import ProfileView from './components/ProfileView';
+import LoginView from './components/LoginView';
+import RegisterView from './components/RegisterView';
+import { useAuth } from './context/AuthContext';
 
 // Import baseline preloaded data & types
 import {
@@ -50,6 +53,8 @@ const safeStorage = {
 };
 
 export default function App() {
+  const { user, loading } = useAuth();
+  const [authView, setAuthView] = useState<'login' | 'register'>('login');
   const [activeView, setActiveView] = useState('Dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
@@ -538,6 +543,25 @@ export default function App() {
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
+  // Auth gate — show login/register until JWT user is loaded
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-950 via-blue-950 to-indigo-950">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
+          <p className="text-slate-400 text-sm">Loading Gradify...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    if (authView === 'register') {
+      return <RegisterView onNavigateLogin={() => setAuthView('login')} />;
+    }
+    return <LoginView onNavigateRegister={() => setAuthView('register')} />;
+  }
+
   return (
     <div className="flex min-h-screen bg-[var(--background)]">
       {/* Sidebar Navigation */}
@@ -597,11 +621,18 @@ export default function App() {
               className="flex items-center gap-2.5 text-left hover:bg-slate-100/50 p-1 px-2 rounded-xl transition-all"
             >
               <div className="text-right hidden sm:block">
-                <span className="text-xs font-bold text-slate-900 block font-sans">{profile.name}</span>
-                <span className="text-[10px] text-slate-400 block font-sans truncate max-w-[120px]">{profile.major}</span>
+                <span className="text-xs font-bold text-slate-900 block font-sans">
+                  {user ? `${user.firstName} ${user.lastName}` : profile.name}
+                </span>
+                <span className="text-[10px] text-slate-400 block font-sans truncate max-w-[120px]">
+                  {user ? user.role?.name : profile.major}
+                </span>
               </div>
               <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-blue-500 to-indigo-600 border border-blue-200 flex items-center justify-center font-black text-white text-sm shrink-0 shadow-xs">
-                {profile.name.substring(0, 2).toUpperCase()}
+                {user
+                  ? `${user.firstName?.[0] ?? ''}${user.lastName?.[0] ?? ''}`.toUpperCase()
+                  : profile.name.substring(0, 2).toUpperCase()
+                }
               </div>
             </button>
           </div>
