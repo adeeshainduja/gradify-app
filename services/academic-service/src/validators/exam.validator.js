@@ -48,24 +48,24 @@ exports.createExamValidation = [
         .withMessage("weight must be between 0 and 100"),
 
     body("obtainedMarks")
-        .optional()
+        .optional({ nullable: true })
         .isFloat({ min: 0 })
         .withMessage("obtainedMarks must be a non-negative number"),
 
     body("grade")
-        .optional()
+        .optional({ nullable: true })
         .isString(),
 
     body("feedback")
-        .optional()
+        .optional({ nullable: true })
         .isString(),
 
     body("notes")
-        .optional()
+        .optional({ nullable: true })
         .isString(),
 
     body("venue")
-        .optional()
+        .optional({ nullable: true })
         .isString(),
 ];
 
@@ -113,18 +113,19 @@ exports.updateExamValidation = [
         .isFloat({ min: 0, max: 100 }),
 
     body("obtainedMarks")
-        .optional()
+        .optional({ nullable: true })
         .isFloat({ min: 0 }),
 
-    body("grade").optional().isString(),
-    body("feedback").optional().isString(),
-    body("notes").optional().isString(),
-    body("venue").optional().isString(),
+    body("grade").optional({ nullable: true }).isString(),
+    body("feedback").optional({ nullable: true }).isString(),
+    body("notes").optional({ nullable: true }).isString(),
+    body("venue").optional({ nullable: true }).isString(),
 ];
 
 exports.validate = (req, res, next) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
+        console.log("Validation failed for exam:", req.body, errors.array());
         return res.status(422).json({
             message: "Validation failed",
             errors: errors.array()
