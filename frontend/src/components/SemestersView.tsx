@@ -16,8 +16,8 @@ import { Semester, Subject, gradeToPoints } from '../types';
 interface SemestersViewProps {
   semesters: Semester[];
   subjects: Subject[];
-  onAddSemester: (name: string, year: number, isCurrent: boolean) => void;
-  onUpdateSemester: (id: string, name: string, year: number, isCurrent: boolean) => void;
+  onAddSemester: (name: string, year: number, startDate: string, endDate: string, isCurrent: boolean) => void;
+  onUpdateSemester: (id: string, name: string, year: number, startDate: string, endDate: string, isCurrent: boolean) => void;
   onDeleteSemester: (id: string) => void;
   onSetCurrentSemester: (id: string) => void;
 }
@@ -38,7 +38,13 @@ export default function SemestersView({
   // Form value states
   const [semName, setSemName] = useState('');
   const [semYear, setSemYear] = useState<number>(new Date().getFullYear());
+  const [semStartDate, setSemStartDate] = useState('');
+  const [semEndDate, setSemEndDate] = useState('');
   const [semIsCurrent, setSemIsCurrent] = useState(false);
+
+  // Helper to build default dates for a year
+  const defaultStartDate = (y: number) => `${y}-01-01`;
+  const defaultEndDate = (y: number) => `${y}-06-30`;
 
   // Helper: calculate courses & gpa for a semester
   const getSemesterStats = (semId: string) => {
@@ -61,8 +67,11 @@ export default function SemestersView({
   };
 
   const handleOpenAdd = () => {
+    const y = new Date().getFullYear();
     setSemName('');
-    setSemYear(new Date().getFullYear());
+    setSemYear(y);
+    setSemStartDate(defaultStartDate(y));
+    setSemEndDate(defaultEndDate(y));
     setSemIsCurrent(false);
     setIsAddOpen(true);
     setIsEditOpen(false);
@@ -72,6 +81,10 @@ export default function SemestersView({
     setEditId(sem.id);
     setSemName(sem.name);
     setSemYear(sem.year);
+    // Restore stored dates if they exist via the extended API fields
+    const apiSem = sem as Semester & Record<string, unknown>;
+    setSemStartDate((apiSem._startDate as string | undefined) ? (apiSem._startDate as string).substring(0, 10) : defaultStartDate(sem.year));
+    setSemEndDate((apiSem._endDate as string | undefined) ? (apiSem._endDate as string).substring(0, 10) : defaultEndDate(sem.year));
     setSemIsCurrent(sem.isCurrent);
     setIsEditOpen(true);
     setIsAddOpen(false);
@@ -80,14 +93,14 @@ export default function SemestersView({
   const handleSaveAdd = (e: FormEvent) => {
     e.preventDefault();
     if (!semName.trim()) return;
-    onAddSemester(semName.trim(), semYear, semIsCurrent);
+    onAddSemester(semName.trim(), semYear, semStartDate, semEndDate, semIsCurrent);
     setIsAddOpen(false);
   };
 
   const handleSaveEdit = (e: FormEvent) => {
     e.preventDefault();
     if (!semName.trim()) return;
-    onUpdateSemester(editId, semName.trim(), semYear, semIsCurrent);
+    onUpdateSemester(editId, semName.trim(), semYear, semStartDate, semEndDate, semIsCurrent);
     setIsEditOpen(false);
   };
 
@@ -355,8 +368,36 @@ export default function SemestersView({
               <input 
                 type="number" 
                 value={semYear} 
-                onChange={(e) => setSemYear(parseInt(e.target.value) || new Date().getFullYear())}
+                onChange={(e) => {
+                  const y = parseInt(e.target.value) || new Date().getFullYear();
+                  setSemYear(y);
+                  // Auto-fill dates if they haven't been manually changed
+                  if (!semStartDate || semStartDate === defaultStartDate(semYear)) setSemStartDate(defaultStartDate(y));
+                  if (!semEndDate || semEndDate === defaultEndDate(semYear)) setSemEndDate(defaultEndDate(y));
+                }}
                 placeholder="e.g. 2026"
+                className="w-full text-sm bg-white border border-slate-200 focus:border-blue-500 rounded-lg p-2 focus:ring-1 focus:ring-blue-100 font-sans"
+                required
+              />
+            </div>
+
+            <div className="space-y-1.5 col-span-1">
+              <label className="text-xs font-semibold text-slate-600 font-sans">Start Date</label>
+              <input 
+                type="date" 
+                value={semStartDate} 
+                onChange={(e) => setSemStartDate(e.target.value)}
+                className="w-full text-sm bg-white border border-slate-200 focus:border-blue-500 rounded-lg p-2 focus:ring-1 focus:ring-blue-100 font-sans"
+                required
+              />
+            </div>
+
+            <div className="space-y-1.5 col-span-1">
+              <label className="text-xs font-semibold text-slate-600 font-sans">End Date</label>
+              <input 
+                type="date" 
+                value={semEndDate} 
+                onChange={(e) => setSemEndDate(e.target.value)}
                 className="w-full text-sm bg-white border border-slate-200 focus:border-blue-500 rounded-lg p-2 focus:ring-1 focus:ring-blue-100 font-sans"
                 required
               />

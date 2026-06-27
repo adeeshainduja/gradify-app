@@ -1,4 +1,4 @@
-import { useState, FormEvent } from 'react';
+import { useState, FormEvent, useEffect } from 'react';
 import { 
   Plus, 
   Trash2, 
@@ -24,6 +24,7 @@ import {
 interface SubjectsViewProps {
   semesters: Semester[];
   subjects: Subject[];
+  activeSemesterId: string;
   onAddSubject: (newSub: Omit<Subject, 'id'>) => void;
   onUpdateSubject: (id: string, updatedSub: Partial<Subject>) => void;
   onDeleteSubject: (id: string) => void;
@@ -32,13 +33,26 @@ interface SubjectsViewProps {
 export default function SubjectsView({
   semesters,
   subjects,
+  activeSemesterId,
   onAddSubject,
   onUpdateSubject,
   onDeleteSubject
 }: SubjectsViewProps) {
-  // Find current semester to select initially
-  const activeSemester = semesters.find(s => s.isCurrent) || semesters[0];
-  const [selectedSemesterId, setSelectedSemesterId] = useState(activeSemester?.id || '');
+  // Find current semester to select initially — use activeSemesterId from parent
+  const [selectedSemesterId, setSelectedSemesterId] = useState(activeSemesterId || '');
+
+  // Re-sync when the parent's activeSemesterId changes (happens after backend fetch replaces
+  // the placeholder IDs like 'sem-1' with real numeric string IDs like '1')
+  useEffect(() => {
+    if (activeSemesterId && activeSemesterId !== selectedSemesterId) {
+      // Only auto-switch if the current selection doesn't exist in the updated semesters list
+      const exists = semesters.some(s => s.id === selectedSemesterId);
+      if (!exists) {
+        setSelectedSemesterId(activeSemesterId);
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSemesterId, semesters]);
 
   // Modal open states
   const [isOpen, setIsOpen] = useState(false);

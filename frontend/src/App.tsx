@@ -11,6 +11,37 @@ import ProfileView from './components/ProfileView';
 import LoginView from './components/LoginView';
 import RegisterView from './components/RegisterView';
 import { useAuth } from './context/AuthContext';
+import {
+  apiGetSemesters,
+  apiCreateSemester,
+  apiUpdateSemester,
+  apiDeleteSemester,
+  toFrontendSemester
+} from './api/semesterApi';
+import {
+  apiGetSubjects,
+  apiCreateSubject,
+  apiUpdateSubject,
+  apiDeleteSubject,
+  toFrontendSubject
+} from './api/subjectApi';
+import {
+  apiGetAssignments,
+  apiCreateAssignment,
+  apiUpdateAssignment,
+  apiDeleteAssignment,
+  toFrontendAssignment,
+  toBackendStatus,
+  toBackendPriority
+} from './api/assignmentApi';
+import {
+  apiGetExams,
+  apiCreateExam,
+  apiUpdateExam,
+  apiDeleteExam,
+  toFrontendExam,
+  toBackendExamStatus
+} from './api/examApi';
 
 // Import baseline preloaded data & types
 import {
@@ -103,27 +134,9 @@ export default function App() {
     return INITIAL_SUBJECTS;
   });
 
-  const [assignments, setAssignments] = useState<Assignment[]>(() => {
-    try {
-      const saved = safeStorage.getItem('gradify_assignments');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
-      }
-    } catch {}
-    return INITIAL_ASSIGNMENTS;
-  });
+  const [assignments, setAssignments] = useState<Assignment[]>([]);
 
-  const [exams, setExams] = useState<Exam[]>(() => {
-    try {
-      const saved = safeStorage.getItem('gradify_exams');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
-      }
-    } catch {}
-    return INITIAL_EXAMS;
-  });
+  const [exams, setExams] = useState<Exam[]>([]);
 
   const [profile, setProfile] = useState<UserProfile>(() => {
     try {
@@ -168,13 +181,9 @@ export default function App() {
     safeStorage.setItem('gradify_subjects', JSON.stringify(subjects));
   }, [subjects]);
 
-  useEffect(() => {
-    safeStorage.setItem('gradify_assignments', JSON.stringify(assignments));
-  }, [assignments]);
+  // NOTE: assignments are now backend-managed; no localStorage sync needed
 
-  useEffect(() => {
-    safeStorage.setItem('gradify_exams', JSON.stringify(exams));
-  }, [exams]);
+  // NOTE: exams are now backend-managed; no localStorage sync needed
 
   useEffect(() => {
     safeStorage.setItem('gradify_profile', JSON.stringify(profile));
@@ -197,140 +206,371 @@ export default function App() {
     setNotifications(prev => [alert, ...prev]);
   };
 
-  // ----- SEMESTERS CRUDS -----
-  const handleAddSemester = (name: string, year: number, isCurrent: boolean) => {
-    const newSem: Semester = {
-      id: `sem-${Math.random().toString()}`,
-      name,
-      year,
-      isCurrent: false // Will set cleanly below if true
-    };
-
-    let updatedSemesters = [...semesters, newSem];
-    if (isCurrent) {
-      updatedSemesters = updatedSemesters.map(s => s.id === newSem.id ? { ...s, isCurrent: true } : { ...s, isCurrent: false });
+  // ----- DATA FETCH ON AUTH LOGIN -----
+  useEffect(() => {
+    if (user) {
+      const loadAcademicData = async () => {
+        try {
+          const semRes = await apiGetSemesters();
+          if (semRes.data) {
+            setSemesters(semRes.data.map(toFrontendSemester));
+          }
+          const subRes = await apiGetSubjects();
+          if (subRes.data) {
+            setSubjects(subRes.data.map(toFrontendSubject));
+          }
+          const assignRes = await apiGetAssignments();
+          if (assignRes.data) {
+            setAssignments(assignRes.data.map(toFrontendAssignment));
+          }
+          const examRes = await apiGetExams();
+          if (examRes.data) {
+            setExams(examRes.data.map(toFrontendExam));
+          }
+        } catch (err) {
+          console.error("Failed to load academic data from backend:", err);
+        }
+      };
+      loadAcademicData();
     }
-    setSemesters(updatedSemesters);
-    triggerNotification('Semester Created', `Semester ${name} was added to curriculum ledger.`, 'success');
+  }, [user]);
+
+  // ----- SEMESTERS CRUDS -----
+  const handleAddSemester = async (name: string, year: number, startDate: string, endDate: string, isCurrent: boolean) => {
+    try {
+      const res = await apiCreateSemester({
+        name,
+        academicYear: String(year),
+        startDate: new Date(startDate).toISOString(),
+        endDate: new Date(endDate).toISOString(),
+        status: isCurrent ? "ACTIVE" : "COMPLETED"
+      });
+      const newSem = toFrontendSemester(res.data);
+      setSemesters(prev => {
+        let updated = [...prev, newSem];
+        if (isCurrent) {
+          updated = updated.map(s => s.id === newSem.id ? { ...s, isCurrent: true } : { ...s, isCurrent: false });
+        }
+        return updated;
+      });
+      triggerNotification('Semester Created', `Semester ${name} was added to curriculum ledger.`, 'success');
+    } catch (err) {
+      console.error(err);
+      triggerNotification('Error', 'Failed to save semester on backend.', 'warning');
+    }
   };
 
-  const handleUpdateSemester = (id: string, name: string, year: number, isCurrent: boolean) => {
-    setSemesters(prev => {
-      const updated = prev.map(s => s.id === id ? { ...s, name, year, isCurrent } : s);
-      if (isCurrent) {
-        return updated.map(s => s.id === id ? { ...s, isCurrent: true } : { ...s, isCurrent: false });
+  const handleUpdateSemester = async (id: string, name: string, year: number, startDate: string, endDate: string, isCurrent: boolean) => {
+    try {
+      const apiId = Number(id);
+      if (!isNaN(apiId)) {
+        // If marking as active, deactivate all other semesters in the backend first
+        if (isCurrent) {
+          const others = semesters.filter(s => s.id !== id && s.isCurrent);
+          await Promise.all(
+            others.map(s => {
+              const otherId = Number(s.id);
+              if (!isNaN(otherId)) return apiUpdateSemester(otherId, { status: "COMPLETED" });
+            })
+          );
+        }
+        await apiUpdateSemester(apiId, {
+          name,
+          academicYear: String(year),
+          startDate: new Date(startDate).toISOString(),
+          endDate: new Date(endDate).toISOString(),
+          status: isCurrent ? "ACTIVE" : "COMPLETED"
+        });
       }
-      return updated;
-    });
-    triggerNotification('Semester Updated', `Semester details for ${name} were revised.`, 'info');
+      setSemesters(prev => {
+        const updated = prev.map(s => s.id === id ? { ...s, name, year, isCurrent } : s);
+        if (isCurrent) {
+          return updated.map(s => s.id === id ? { ...s, isCurrent: true } : { ...s, isCurrent: false });
+        }
+        return updated;
+      });
+      triggerNotification('Semester Updated', `Semester details for ${name} were revised.`, 'info');
+    } catch (err) {
+      console.error(err);
+      triggerNotification('Error', 'Failed to update semester on backend.', 'warning');
+    }
   };
 
-  const handleDeleteSemester = (id: string) => {
-    const target = semesters.find(s => s.id === id);
-    setSemesters(prev => prev.filter(s => s.id !== id));
-    // Cascade erase subjects, assignments, and exams mapping to this semester
-    const targetSubIds = subjects.filter(s => s.semesterId === id).map(s => s.id);
-    setSubjects(prev => prev.filter(s => s.semesterId !== id));
-    setAssignments(prev => prev.filter(a => !targetSubIds.includes(a.subjectId)));
-    setExams(prev => prev.filter(e => !targetSubIds.includes(e.subjectId)));
-    
-    triggerNotification('Semester Wiped', `Erase operations deleted ${target?.name || 'semester'} and its course credentials cascading.`, 'warning');
+  const handleDeleteSemester = async (id: string) => {
+    try {
+      const apiId = Number(id);
+      if (!isNaN(apiId)) {
+        await apiDeleteSemester(apiId);
+      }
+      const target = semesters.find(s => s.id === id);
+      setSemesters(prev => prev.filter(s => s.id !== id));
+      // Cascade erase subjects, assignments, and exams mapping to this semester
+      const targetSubIds = subjects.filter(s => s.semesterId === id).map(s => s.id);
+      setSubjects(prev => prev.filter(s => s.semesterId !== id));
+      setAssignments(prev => prev.filter(a => !targetSubIds.includes(a.subjectId)));
+      setExams(prev => prev.filter(e => !targetSubIds.includes(e.subjectId)));
+      
+      triggerNotification('Semester Wiped', `Erase operations deleted ${target?.name || 'semester'} and its course credentials cascading.`, 'warning');
+    } catch (err) {
+      console.error(err);
+      triggerNotification('Error', 'Failed to delete semester on backend.', 'warning');
+    }
   };
 
-  const handleSetCurrentSemester = (id: string) => {
-    const target = semesters.find(s => s.id === id);
-    setSemesters(prev => prev.map(s => s.id === id ? { ...s, isCurrent: true } : { ...s, isCurrent: false }));
-    triggerNotification('Active Period Changed', `Active workbook pointer switched to ${target?.name || 'selected semester'}.`, 'info');
+  const handleSetCurrentSemester = async (id: string) => {
+    try {
+      const apiId = Number(id);
+      // Deactivate all currently-ACTIVE semesters in the backend first
+      const activeSems = semesters.filter(s => s.isCurrent && s.id !== id);
+      await Promise.all(
+        activeSems.map(s => {
+          const otherId = Number(s.id);
+          if (!isNaN(otherId)) return apiUpdateSemester(otherId, { status: "COMPLETED" });
+        })
+      );
+      if (!isNaN(apiId)) {
+        await apiUpdateSemester(apiId, { status: "ACTIVE" });
+      }
+      const target = semesters.find(s => s.id === id);
+      setSemesters(prev => prev.map(s => s.id === id ? { ...s, isCurrent: true } : { ...s, isCurrent: false }));
+      triggerNotification('Active Period Changed', `Active workbook pointer switched to ${target?.name || 'selected semester'}.`, 'info');
+    } catch (err) {
+      console.error(err);
+      triggerNotification('Error', 'Failed to set active semester on backend.', 'warning');
+    }
   };
 
   // ----- SUBJECTS CRUDS -----
-  const handleAddSubject = (newSub: Omit<Subject, 'id'>) => {
-    const payload: Subject = {
-      ...newSub,
-      id: `sub-${Math.random().toString()}`
-    };
-    setSubjects(prev => [...prev, payload]);
-    triggerNotification('Course Registered', `Curricular record for ${newSub.code}: ${newSub.name} created.`, 'success');
-  };
-
-  const handleUpdateSubject = (id: string, updated: Partial<Subject>) => {
-    setSubjects(prev => prev.map(s => s.id === id ? { ...s, ...updated } : s));
-    triggerNotification('Course Adjusted', `Specifications for course ${updated.code || 'selected template'} updated.`, 'info');
-  };
-
-  const handleDeleteSubject = (id: string) => {
-    const target = subjects.find(s => s.id === id);
-    setSubjects(prev => prev.filter(s => s.id !== id));
-    // Cascade erase assignments & exams referencing this course
-    setAssignments(prev => prev.filter(a => a.subjectId !== id));
-    setExams(prev => prev.filter(e => e.subjectId !== id));
-
-    triggerNotification('Course Deleted', `Removed course ${target?.code || ''} and its associated graded credentials.`, 'warning');
-  };
-
-  // ----- ASSIGNMENTS CRUDS -----
-  const handleAddAssignment = (newAssign: Omit<Assignment, 'id'>) => {
-    const payload: Assignment = {
-      ...newAssign,
-      id: `assign-${Math.random().toString()}`
-    };
-    setAssignments(prev => [payload, ...prev]);
-    triggerNotification('Task Scheduled', `Assignment "${newAssign.title}" logged in tasks workbook.`, 'info');
-  };
-
-  const handleUpdateAssignment = (id: string, updated: Partial<Assignment>) => {
-    setAssignments(prev => prev.map(a => a.id === id ? { ...a, ...updated } : a));
-  };
-
-  const handleDeleteAssignment = (id: string) => {
-    const target = assignments.find(a => a.id === id);
-    setAssignments(prev => prev.filter(a => a.id !== id));
-    triggerNotification('Task Cleared', `Wiped item "${target?.title}" from curricular registry.`, 'warning');
-  };
-
-  const handleQuickToggleAssignment = (id: string) => {
-    setAssignments(prev => prev.map(a => {
-      if (a.id === id) {
-        let nextStatus: AssignmentStatus = 'Pending';
-        let updatedScore = a.score;
-        if (a.status === 'Pending') {
-          nextStatus = 'Submitted';
-          triggerNotification('Task Completed', `Submitted assignment "${a.title}". Nice progress!`, 'success');
-        } else if (a.status === 'Submitted') {
-          nextStatus = 'Graded';
-          updatedScore = a.maxScore; // Default to max points for quick toggles
-          triggerNotification('Grade Scored', `Assignment "${a.title}" graded. Complete details in Assignments panel.`, 'success');
-        } else {
-          nextStatus = 'Pending';
-          updatedScore = undefined;
-        }
-        return { ...a, status: nextStatus, score: updatedScore };
-      }
-      return a;
-    }));
-  };
-
-  // ----- EXAMS CRUDS -----
-  const handleAddExam = (newExam: Omit<Exam, 'id'>) => {
-    const payload: Exam = {
-      ...newExam,
-      id: `exam-${Math.random().toString()}`
-    };
-    setExams(prev => [...prev, payload]);
-    triggerNotification('Exam Listed', `Scheduled: ${newExam.title}. Ready for preparation checks.`, 'success');
-  };
-
-  const handleUpdateExam = (id: string, updated: Partial<Exam>) => {
-    setExams(prev => prev.map(e => e.id === id ? { ...e, ...updated } : e));
-    if (updated.status === 'Completed' && updated.score !== undefined) {
-      const exam = exams.find(ex => ex.id === id);
-      triggerNotification('Exam Completed', `Recorded score ${updated.score}/${exam?.maxScore || 100} for ${exam?.title}.`, 'success');
+  const handleAddSubject = async (newSub: Omit<Subject, 'id'>) => {
+    try {
+      const res = await apiCreateSubject({
+        code: newSub.code,
+        name: newSub.name,
+        credits: newSub.credits,
+        semesterId: Number(newSub.semesterId),
+        status: newSub.grade === 'IP' ? 'ACTIVE' : 'COMPLETED',
+        color: newSub.color,
+        room: newSub.room,
+        schedule: newSub.schedule,
+        targetGrade: newSub.targetGrade,
+        professorEmail: newSub.professorEmail,
+        professorName: newSub.professorName,
+        grade: newSub.grade
+      });
+      const sub = toFrontendSubject(res.data);
+      setSubjects(prev => [...prev, sub]);
+      triggerNotification('Course Registered', `Curricular record for ${newSub.code}: ${newSub.name} created.`, 'success');
+    } catch (err) {
+      console.error(err);
+      triggerNotification('Error', 'Failed to create subject on backend.', 'warning');
     }
   };
 
-  const handleDeleteExam = (id: string) => {
-    setExams(prev => prev.filter(e => e.id !== id));
-    triggerNotification('Exam Cancelled', 'Cleared examination event parameters.', 'info');
+  const handleUpdateSubject = async (id: string, updated: Partial<Subject>) => {
+    try {
+      const apiId = Number(id);
+      if (!isNaN(apiId)) {
+        await apiUpdateSubject(apiId, {
+          code: updated.code,
+          name: updated.name,
+          credits: updated.credits,
+          status: updated.grade ? (updated.grade === 'IP' ? 'ACTIVE' : 'COMPLETED') : undefined,
+          color: updated.color,
+          room: updated.room,
+          schedule: updated.schedule,
+          targetGrade: updated.targetGrade,
+          professorEmail: updated.professorEmail,
+          professorName: updated.professorName,
+          grade: updated.grade,
+          semesterId: updated.semesterId ? Number(updated.semesterId) : undefined
+        });
+      }
+      setSubjects(prev => prev.map(s => s.id === id ? { ...s, ...updated } : s));
+      triggerNotification('Course Adjusted', `Specifications for course ${updated.code || 'selected template'} updated.`, 'info');
+    } catch (err) {
+      console.error(err);
+      triggerNotification('Error', 'Failed to update subject on backend.', 'warning');
+    }
+  };
+
+  const handleDeleteSubject = async (id: string) => {
+    try {
+      const apiId = Number(id);
+      if (!isNaN(apiId)) {
+        await apiDeleteSubject(apiId);
+      }
+      const target = subjects.find(s => s.id === id);
+      setSubjects(prev => prev.filter(s => s.id !== id));
+      // Cascade erase assignments & exams referencing this course
+      setAssignments(prev => prev.filter(a => a.subjectId !== id));
+      setExams(prev => prev.filter(e => e.subjectId !== id));
+
+      triggerNotification('Course Deleted', `Removed course ${target?.code || ''} and its associated graded credentials.`, 'warning');
+    } catch (err) {
+      console.error(err);
+      triggerNotification('Error', 'Failed to delete subject on backend.', 'warning');
+    }
+  };
+
+
+  // ----- ASSIGNMENTS CRUDS -----
+  const handleAddAssignment = async (newAssign: Omit<Assignment, 'id'>) => {
+    try {
+      const res = await apiCreateAssignment({
+        title:       newAssign.title,
+        subjectId:   Number(newAssign.subjectId),
+        dueDate:     newAssign.dueDate,
+        priority:    toBackendPriority(newAssign.priority || 'Medium'),
+        status:      toBackendStatus(newAssign.status),
+        description: newAssign.description,
+        marks:       newAssign.score ?? null,
+        maxMarks:    newAssign.maxScore,
+        weight:      newAssign.weight,
+        progress:    0,
+      });
+      const mapped = toFrontendAssignment(res.data);
+      setAssignments(prev => [mapped, ...prev]);
+      triggerNotification('Task Scheduled', `Assignment "${newAssign.title}" logged in tasks workbook.`, 'info');
+    } catch (err) {
+      console.error(err);
+      triggerNotification('Error', 'Failed to create assignment on backend.', 'warning');
+    }
+  };
+
+  const handleUpdateAssignment = async (id: string, updated: Partial<Assignment>) => {
+    try {
+      const apiId = Number(id);
+      if (!isNaN(apiId)) {
+        await apiUpdateAssignment(apiId, {
+          ...(updated.title       !== undefined && { title:       updated.title }),
+          ...(updated.description !== undefined && { description: updated.description }),
+          ...(updated.dueDate     !== undefined && { dueDate:     updated.dueDate }),
+          ...(updated.priority    !== undefined && { priority:    toBackendPriority(updated.priority) }),
+          ...(updated.status      !== undefined && { status:      toBackendStatus(updated.status) }),
+          ...(updated.score       !== undefined && { marks:       updated.score }),
+          ...(updated.maxScore    !== undefined && { maxMarks:    updated.maxScore }),
+          ...(updated.weight      !== undefined && { weight:      updated.weight }),
+          ...(updated.subjectId   !== undefined && { subjectId:   Number(updated.subjectId) }),
+        });
+      }
+      setAssignments(prev => prev.map(a => a.id === id ? { ...a, ...updated } : a));
+    } catch (err) {
+      console.error(err);
+      triggerNotification('Error', 'Failed to update assignment on backend.', 'warning');
+    }
+  };
+
+  const handleDeleteAssignment = async (id: string) => {
+    try {
+      const apiId = Number(id);
+      if (!isNaN(apiId)) {
+        await apiDeleteAssignment(apiId);
+      }
+      const target = assignments.find(a => a.id === id);
+      setAssignments(prev => prev.filter(a => a.id !== id));
+      triggerNotification('Task Cleared', `Wiped item "${target?.title}" from curricular registry.`, 'warning');
+    } catch (err) {
+      console.error(err);
+      triggerNotification('Error', 'Failed to delete assignment on backend.', 'warning');
+    }
+  };
+
+  const handleQuickToggleAssignment = async (id: string) => {
+    const assign = assignments.find(a => a.id === id);
+    if (!assign) return;
+
+    let nextStatus: AssignmentStatus = 'Pending';
+    let updatedScore = assign.score;
+
+    if (assign.status === 'Pending') {
+      nextStatus = 'Submitted';
+      triggerNotification('Task Completed', `Submitted assignment "${assign.title}". Nice progress!`, 'success');
+    } else if (assign.status === 'Submitted') {
+      nextStatus = 'Graded';
+      updatedScore = assign.maxScore;
+      triggerNotification('Grade Scored', `Assignment "${assign.title}" graded.`, 'success');
+    } else {
+      nextStatus = 'Pending';
+      updatedScore = undefined;
+    }
+
+    await handleUpdateAssignment(id, { status: nextStatus, score: updatedScore });
+  };
+
+  // ----- EXAMS CRUDS -----
+  const handleAddExam = async (newExam: Omit<Exam, 'id'>) => {
+    try {
+      // Parse the frontend's combined dateTime ("2026-09-12T09:00") into
+      // separate examDate (ISO string) and startTime ("HH:MM")
+      const dtParts = newExam.dateTime.split('T');
+      const examDate = dtParts[0]; // "2026-09-12"
+      const startTime = dtParts[1]?.substring(0, 5) || '09:00'; // "09:00"
+
+      const res = await apiCreateExam({
+        title:      newExam.title,
+        subjectId:  Number(newExam.subjectId),
+        examDate,
+        startTime,
+        examType:   'FINAL',   // default type; user can update via edit
+        totalMarks: newExam.maxScore ?? 100,
+        venue:      newExam.room || undefined,
+        weight:     newExam.weight ?? 0,
+        notes:      newExam.notes || undefined,
+        status:     toBackendExamStatus(newExam.status),
+        obtainedMarks: newExam.score ?? null,
+      });
+      const mapped = toFrontendExam(res.data);
+      setExams(prev => [...prev, mapped]);
+      triggerNotification('Exam Listed', `Scheduled: ${newExam.title}. Ready for preparation checks.`, 'success');
+    } catch (err) {
+      console.error(err);
+      triggerNotification('Error', 'Failed to schedule exam on backend.', 'warning');
+    }
+  };
+
+  const handleUpdateExam = async (id: string, updated: Partial<Exam>) => {
+    try {
+      const apiId = Number(id);
+      if (!isNaN(apiId)) {
+        const patch: Record<string, unknown> = {};
+        if (updated.title     !== undefined) patch.title      = updated.title;
+        if (updated.notes     !== undefined) patch.notes      = updated.notes;
+        if (updated.room      !== undefined) patch.venue      = updated.room;
+        if (updated.weight    !== undefined) patch.weight     = updated.weight;
+        if (updated.maxScore  !== undefined) patch.totalMarks = updated.maxScore;
+        if (updated.score     !== undefined) patch.obtainedMarks = updated.score;
+        if (updated.status    !== undefined) patch.status     = toBackendExamStatus(updated.status);
+        if (updated.subjectId !== undefined) patch.subjectId  = Number(updated.subjectId);
+        if (updated.dateTime  !== undefined) {
+          const dtParts = updated.dateTime.split('T');
+          patch.examDate  = dtParts[0];
+          patch.startTime = dtParts[1]?.substring(0, 5) || '09:00';
+        }
+        await apiUpdateExam(apiId, patch);
+      }
+      setExams(prev => prev.map(e => e.id === id ? { ...e, ...updated } : e));
+      if (updated.status === 'Completed' && updated.score !== undefined) {
+        const exam = exams.find(ex => ex.id === id);
+        triggerNotification('Exam Completed', `Recorded score ${updated.score}/${exam?.maxScore || 100} for ${exam?.title}.`, 'success');
+      }
+    } catch (err) {
+      console.error(err);
+      triggerNotification('Error', 'Failed to update exam on backend.', 'warning');
+    }
+  };
+
+  const handleDeleteExam = async (id: string) => {
+    try {
+      const apiId = Number(id);
+      if (!isNaN(apiId)) {
+        await apiDeleteExam(apiId);
+      }
+      setExams(prev => prev.filter(e => e.id !== id));
+      triggerNotification('Exam Cancelled', 'Cleared examination event parameters.', 'info');
+    } catch (err) {
+      console.error(err);
+      triggerNotification('Error', 'Failed to delete exam on backend.', 'warning');
+    }
   };
 
   // ----- PROFILE SETTINGS -----
@@ -447,6 +687,7 @@ export default function App() {
           <SubjectsView
             semesters={semesters}
             subjects={subjects}
+            activeSemesterId={(semesters.find(s => s.isCurrent) || semesters[0])?.id || ''}
             onAddSubject={handleAddSubject}
             onUpdateSubject={handleUpdateSubject}
             onDeleteSubject={handleDeleteSubject}
