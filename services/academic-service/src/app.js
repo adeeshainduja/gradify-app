@@ -3,8 +3,9 @@ const cors    = require("cors");
 const helmet  = require("helmet");
 const morgan  = require("morgan");
 
-const semesterRoutes = require("./routes/semester.routes");
-const subjectRoutes  = require("./routes/subject.routes");
+const semesterRoutes  = require("./routes/semester.routes");
+const subjectRoutes   = require("./routes/subject.routes");
+const assignmentRoutes = require("./routes/assignment.routes");
 
 const app = express();
 
@@ -27,6 +28,9 @@ app.use("/api/academic", semesterRoutes);
 
 // Subject routes
 app.use("/api/academic", subjectRoutes);
+
+// Assignment routes
+app.use("/api/academic", assignmentRoutes);
 
 // 404 handler
 app.use((req, res) => {

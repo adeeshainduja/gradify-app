@@ -25,6 +25,15 @@ import {
   apiDeleteSubject,
   toFrontendSubject
 } from './api/subjectApi';
+import {
+  apiGetAssignments,
+  apiCreateAssignment,
+  apiUpdateAssignment,
+  apiDeleteAssignment,
+  toFrontendAssignment,
+  toBackendStatus,
+  toBackendPriority
+} from './api/assignmentApi';
 
 // Import baseline preloaded data & types
 import {
@@ -117,16 +126,7 @@ export default function App() {
     return INITIAL_SUBJECTS;
   });
 
-  const [assignments, setAssignments] = useState<Assignment[]>(() => {
-    try {
-      const saved = safeStorage.getItem('gradify_assignments');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
-      }
-    } catch {}
-    return INITIAL_ASSIGNMENTS;
-  });
+  const [assignments, setAssignments] = useState<Assignment[]>([]);
 
   const [exams, setExams] = useState<Exam[]>(() => {
     try {
@@ -182,9 +182,7 @@ export default function App() {
     safeStorage.setItem('gradify_subjects', JSON.stringify(subjects));
   }, [subjects]);
 
-  useEffect(() => {
-    safeStorage.setItem('gradify_assignments', JSON.stringify(assignments));
-  }, [assignments]);
+  // NOTE: assignments are now backend-managed; no localStorage sync needed
 
   useEffect(() => {
     safeStorage.setItem('gradify_exams', JSON.stringify(exams));
@@ -223,6 +221,10 @@ export default function App() {
           const subRes = await apiGetSubjects();
           if (subRes.data) {
             setSubjects(subRes.data.map(toFrontendSubject));
+          }
+          const assignRes = await apiGetAssignments();
+          if (assignRes.data) {
+            setAssignments(assignRes.data.map(toFrontendAssignment));
           }
         } catch (err) {
           console.error("Failed to load academic data from backend:", err);
@@ -411,45 +413,87 @@ export default function App() {
 
 
   // ----- ASSIGNMENTS CRUDS -----
-  const handleAddAssignment = (newAssign: Omit<Assignment, 'id'>) => {
-    const payload: Assignment = {
-      ...newAssign,
-      id: `assign-${Math.random().toString()}`
-    };
-    setAssignments(prev => [payload, ...prev]);
-    triggerNotification('Task Scheduled', `Assignment "${newAssign.title}" logged in tasks workbook.`, 'info');
+  const handleAddAssignment = async (newAssign: Omit<Assignment, 'id'>) => {
+    try {
+      const res = await apiCreateAssignment({
+        title:       newAssign.title,
+        subjectId:   Number(newAssign.subjectId),
+        dueDate:     newAssign.dueDate,
+        priority:    toBackendPriority(newAssign.priority || 'Medium'),
+        status:      toBackendStatus(newAssign.status),
+        description: newAssign.description,
+        marks:       newAssign.score ?? null,
+        maxMarks:    newAssign.maxScore,
+        weight:      newAssign.weight,
+        progress:    0,
+      });
+      const mapped = toFrontendAssignment(res.data);
+      setAssignments(prev => [mapped, ...prev]);
+      triggerNotification('Task Scheduled', `Assignment "${newAssign.title}" logged in tasks workbook.`, 'info');
+    } catch (err) {
+      console.error(err);
+      triggerNotification('Error', 'Failed to create assignment on backend.', 'warning');
+    }
   };
 
-  const handleUpdateAssignment = (id: string, updated: Partial<Assignment>) => {
-    setAssignments(prev => prev.map(a => a.id === id ? { ...a, ...updated } : a));
-  };
-
-  const handleDeleteAssignment = (id: string) => {
-    const target = assignments.find(a => a.id === id);
-    setAssignments(prev => prev.filter(a => a.id !== id));
-    triggerNotification('Task Cleared', `Wiped item "${target?.title}" from curricular registry.`, 'warning');
-  };
-
-  const handleQuickToggleAssignment = (id: string) => {
-    setAssignments(prev => prev.map(a => {
-      if (a.id === id) {
-        let nextStatus: AssignmentStatus = 'Pending';
-        let updatedScore = a.score;
-        if (a.status === 'Pending') {
-          nextStatus = 'Submitted';
-          triggerNotification('Task Completed', `Submitted assignment "${a.title}". Nice progress!`, 'success');
-        } else if (a.status === 'Submitted') {
-          nextStatus = 'Graded';
-          updatedScore = a.maxScore; // Default to max points for quick toggles
-          triggerNotification('Grade Scored', `Assignment "${a.title}" graded. Complete details in Assignments panel.`, 'success');
-        } else {
-          nextStatus = 'Pending';
-          updatedScore = undefined;
-        }
-        return { ...a, status: nextStatus, score: updatedScore };
+  const handleUpdateAssignment = async (id: string, updated: Partial<Assignment>) => {
+    try {
+      const apiId = Number(id);
+      if (!isNaN(apiId)) {
+        await apiUpdateAssignment(apiId, {
+          ...(updated.title       !== undefined && { title:       updated.title }),
+          ...(updated.description !== undefined && { description: updated.description }),
+          ...(updated.dueDate     !== undefined && { dueDate:     updated.dueDate }),
+          ...(updated.priority    !== undefined && { priority:    toBackendPriority(updated.priority) }),
+          ...(updated.status      !== undefined && { status:      toBackendStatus(updated.status) }),
+          ...(updated.score       !== undefined && { marks:       updated.score }),
+          ...(updated.maxScore    !== undefined && { maxMarks:    updated.maxScore }),
+          ...(updated.weight      !== undefined && { weight:      updated.weight }),
+          ...(updated.subjectId   !== undefined && { subjectId:   Number(updated.subjectId) }),
+        });
       }
-      return a;
-    }));
+      setAssignments(prev => prev.map(a => a.id === id ? { ...a, ...updated } : a));
+    } catch (err) {
+      console.error(err);
+      triggerNotification('Error', 'Failed to update assignment on backend.', 'warning');
+    }
+  };
+
+  const handleDeleteAssignment = async (id: string) => {
+    try {
+      const apiId = Number(id);
+      if (!isNaN(apiId)) {
+        await apiDeleteAssignment(apiId);
+      }
+      const target = assignments.find(a => a.id === id);
+      setAssignments(prev => prev.filter(a => a.id !== id));
+      triggerNotification('Task Cleared', `Wiped item "${target?.title}" from curricular registry.`, 'warning');
+    } catch (err) {
+      console.error(err);
+      triggerNotification('Error', 'Failed to delete assignment on backend.', 'warning');
+    }
+  };
+
+  const handleQuickToggleAssignment = async (id: string) => {
+    const assign = assignments.find(a => a.id === id);
+    if (!assign) return;
+
+    let nextStatus: AssignmentStatus = 'Pending';
+    let updatedScore = assign.score;
+
+    if (assign.status === 'Pending') {
+      nextStatus = 'Submitted';
+      triggerNotification('Task Completed', `Submitted assignment "${assign.title}". Nice progress!`, 'success');
+    } else if (assign.status === 'Submitted') {
+      nextStatus = 'Graded';
+      updatedScore = assign.maxScore;
+      triggerNotification('Grade Scored', `Assignment "${assign.title}" graded.`, 'success');
+    } else {
+      nextStatus = 'Pending';
+      updatedScore = undefined;
+    }
+
+    await handleUpdateAssignment(id, { status: nextStatus, score: updatedScore });
   };
 
   // ----- EXAMS CRUDS -----
