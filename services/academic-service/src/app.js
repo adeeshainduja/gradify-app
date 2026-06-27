@@ -6,6 +6,7 @@ const morgan  = require("morgan");
 const semesterRoutes  = require("./routes/semester.routes");
 const subjectRoutes   = require("./routes/subject.routes");
 const assignmentRoutes = require("./routes/assignment.routes");
+const examRoutes      = require("./routes/exam.routes");
 
 const app = express();
 
@@ -31,6 +32,9 @@ app.use("/api/academic", subjectRoutes);
 
 // Assignment routes
 app.use("/api/academic", assignmentRoutes);
+
+// Exam routes
+app.use("/api/academic", examRoutes);
 
 // 404 handler
 app.use((req, res) => {

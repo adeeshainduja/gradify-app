@@ -34,6 +34,14 @@ import {
   toBackendStatus,
   toBackendPriority
 } from './api/assignmentApi';
+import {
+  apiGetExams,
+  apiCreateExam,
+  apiUpdateExam,
+  apiDeleteExam,
+  toFrontendExam,
+  toBackendExamStatus
+} from './api/examApi';
 
 // Import baseline preloaded data & types
 import {
@@ -128,16 +136,7 @@ export default function App() {
 
   const [assignments, setAssignments] = useState<Assignment[]>([]);
 
-  const [exams, setExams] = useState<Exam[]>(() => {
-    try {
-      const saved = safeStorage.getItem('gradify_exams');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
-      }
-    } catch {}
-    return INITIAL_EXAMS;
-  });
+  const [exams, setExams] = useState<Exam[]>([]);
 
   const [profile, setProfile] = useState<UserProfile>(() => {
     try {
@@ -184,9 +183,7 @@ export default function App() {
 
   // NOTE: assignments are now backend-managed; no localStorage sync needed
 
-  useEffect(() => {
-    safeStorage.setItem('gradify_exams', JSON.stringify(exams));
-  }, [exams]);
+  // NOTE: exams are now backend-managed; no localStorage sync needed
 
   useEffect(() => {
     safeStorage.setItem('gradify_profile', JSON.stringify(profile));
@@ -225,6 +222,10 @@ export default function App() {
           const assignRes = await apiGetAssignments();
           if (assignRes.data) {
             setAssignments(assignRes.data.map(toFrontendAssignment));
+          }
+          const examRes = await apiGetExams();
+          if (examRes.data) {
+            setExams(examRes.data.map(toFrontendExam));
           }
         } catch (err) {
           console.error("Failed to load academic data from backend:", err);
@@ -497,26 +498,79 @@ export default function App() {
   };
 
   // ----- EXAMS CRUDS -----
-  const handleAddExam = (newExam: Omit<Exam, 'id'>) => {
-    const payload: Exam = {
-      ...newExam,
-      id: `exam-${Math.random().toString()}`
-    };
-    setExams(prev => [...prev, payload]);
-    triggerNotification('Exam Listed', `Scheduled: ${newExam.title}. Ready for preparation checks.`, 'success');
-  };
+  const handleAddExam = async (newExam: Omit<Exam, 'id'>) => {
+    try {
+      // Parse the frontend's combined dateTime ("2026-09-12T09:00") into
+      // separate examDate (ISO string) and startTime ("HH:MM")
+      const dtParts = newExam.dateTime.split('T');
+      const examDate = dtParts[0]; // "2026-09-12"
+      const startTime = dtParts[1]?.substring(0, 5) || '09:00'; // "09:00"
 
-  const handleUpdateExam = (id: string, updated: Partial<Exam>) => {
-    setExams(prev => prev.map(e => e.id === id ? { ...e, ...updated } : e));
-    if (updated.status === 'Completed' && updated.score !== undefined) {
-      const exam = exams.find(ex => ex.id === id);
-      triggerNotification('Exam Completed', `Recorded score ${updated.score}/${exam?.maxScore || 100} for ${exam?.title}.`, 'success');
+      const res = await apiCreateExam({
+        title:      newExam.title,
+        subjectId:  Number(newExam.subjectId),
+        examDate,
+        startTime,
+        examType:   'FINAL',   // default type; user can update via edit
+        totalMarks: newExam.maxScore ?? 100,
+        venue:      newExam.room || undefined,
+        weight:     newExam.weight ?? 0,
+        notes:      newExam.notes || undefined,
+        status:     toBackendExamStatus(newExam.status),
+        obtainedMarks: newExam.score ?? null,
+      });
+      const mapped = toFrontendExam(res.data);
+      setExams(prev => [...prev, mapped]);
+      triggerNotification('Exam Listed', `Scheduled: ${newExam.title}. Ready for preparation checks.`, 'success');
+    } catch (err) {
+      console.error(err);
+      triggerNotification('Error', 'Failed to schedule exam on backend.', 'warning');
     }
   };
 
-  const handleDeleteExam = (id: string) => {
-    setExams(prev => prev.filter(e => e.id !== id));
-    triggerNotification('Exam Cancelled', 'Cleared examination event parameters.', 'info');
+  const handleUpdateExam = async (id: string, updated: Partial<Exam>) => {
+    try {
+      const apiId = Number(id);
+      if (!isNaN(apiId)) {
+        const patch: Record<string, unknown> = {};
+        if (updated.title     !== undefined) patch.title      = updated.title;
+        if (updated.notes     !== undefined) patch.notes      = updated.notes;
+        if (updated.room      !== undefined) patch.venue      = updated.room;
+        if (updated.weight    !== undefined) patch.weight     = updated.weight;
+        if (updated.maxScore  !== undefined) patch.totalMarks = updated.maxScore;
+        if (updated.score     !== undefined) patch.obtainedMarks = updated.score;
+        if (updated.status    !== undefined) patch.status     = toBackendExamStatus(updated.status);
+        if (updated.subjectId !== undefined) patch.subjectId  = Number(updated.subjectId);
+        if (updated.dateTime  !== undefined) {
+          const dtParts = updated.dateTime.split('T');
+          patch.examDate  = dtParts[0];
+          patch.startTime = dtParts[1]?.substring(0, 5) || '09:00';
+        }
+        await apiUpdateExam(apiId, patch);
+      }
+      setExams(prev => prev.map(e => e.id === id ? { ...e, ...updated } : e));
+      if (updated.status === 'Completed' && updated.score !== undefined) {
+        const exam = exams.find(ex => ex.id === id);
+        triggerNotification('Exam Completed', `Recorded score ${updated.score}/${exam?.maxScore || 100} for ${exam?.title}.`, 'success');
+      }
+    } catch (err) {
+      console.error(err);
+      triggerNotification('Error', 'Failed to update exam on backend.', 'warning');
+    }
+  };
+
+  const handleDeleteExam = async (id: string) => {
+    try {
+      const apiId = Number(id);
+      if (!isNaN(apiId)) {
+        await apiDeleteExam(apiId);
+      }
+      setExams(prev => prev.filter(e => e.id !== id));
+      triggerNotification('Exam Cancelled', 'Cleared examination event parameters.', 'info');
+    } catch (err) {
+      console.error(err);
+      triggerNotification('Error', 'Failed to delete exam on backend.', 'warning');
+    }
   };
 
   // ----- PROFILE SETTINGS -----
