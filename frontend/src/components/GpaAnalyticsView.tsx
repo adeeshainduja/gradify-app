@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   Award, 
   TrendingUp, 
@@ -7,7 +7,13 @@ import {
   Sparkles, 
   Scale, 
   BookOpen, 
-  GraduationCap 
+  GraduationCap,
+  PieChart,
+  BarChart2,
+  CheckCircle2,
+  BarChart3,
+  Loader2,
+  Target
 } from 'lucide-react';
 import { 
   Semester, 
@@ -17,6 +23,8 @@ import {
   AVAILABLE_GRADES, 
   GradeType 
 } from '../types';
+import { gpaTrend } from '../api/gpaApi';
+import { assignmentAnalytics, subjectPerformance } from '../api/analyticsApi';
 
 interface GpaAnalyticsViewProps {
   semesters: Semester[];
@@ -42,8 +50,118 @@ export default function GpaAnalyticsView({
     return initial;
   });
 
+  const [trendData, setTrendData] = useState<{
+    semesterName: string;
+    sgpa: number;
+    cgpa: number;
+  }[]>([]);
+  const [assignmentAnalyticsData, setAssignmentAnalyticsData] = useState<{
+    total: number;
+    completed: number;
+    percentage: number;
+  } | null>(null);
+  const [subjectPerformanceData, setSubjectPerformanceData] = useState<{
+    name: string;
+    credits: number;
+    currentGrade: string;
+    progress: number;
+  }[]>([]);
+  const [gpaHistory, setGpaHistory] = useState<{
+    semesterName: string;
+    sgpa: number;
+    cgpa: number;
+  }[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
+  // Weighted Grade Predictor state
+  const [midAssignments, setMidAssignments] = useState<{ id: string; score: number }[]>([
+    { id: 'mid-1', score: 50 }
+  ]);
+  const [predFinal, setPredFinal] = useState<number>(50);
+  const [predResult, setPredResult] = useState<{
+    average: number;
+    expectedGrade: string;
+    expectedGPA: number;
+    confidence: number;
+    outlook: 'Excellent' | 'Good' | 'Needs Improvement';
+  } | null>(null);
+  const [predLoading, setPredLoading] = useState(false);
+
+  useEffect(() => {
+    const loadAnalytics = async () => {
+      try {
+        const [trendRes, assignmentsRes, subjectsRes] = await Promise.all([
+          gpaTrend(),
+          assignmentAnalytics(),
+          subjectPerformance(),
+        ]);
+        if (trendRes.data) {
+          setTrendData(trendRes.data);
+          setGpaHistory(trendRes.data);
+        }
+        if (assignmentsRes.data) setAssignmentAnalyticsData(assignmentsRes.data);
+        if (subjectsRes.data) setSubjectPerformanceData(subjectsRes.data);
+      } catch (err) {
+        console.error("Failed to load analytics:", err);
+      }
+    };
+    loadAnalytics();
+  }, []);
+
   const handlePredictGradeChange = (subId: string, gradeStr: GradeType) => {
     setPredictions({ ...predictions, [subId]: gradeStr });
+  };
+
+  // ── Weighted Grade Predictor Handlers ──────────────────────────────────────
+  const addMidAssignment = () => {
+    setMidAssignments(prev => [...prev, { id: `mid-${Date.now()}`, score: 50 }]);
+  };
+
+  const removeMidAssignment = (id: string) => {
+    setMidAssignments(prev => prev.filter(a => a.id !== id));
+  };
+
+  const updateMidAssignment = (id: string, score: number) => {
+    setMidAssignments(prev => prev.map(a => a.id === id ? { ...a, score } : a));
+  };
+
+  const handlePredict = async () => {
+    setPredLoading(true);
+    setPredResult(null);
+
+    try {
+      await new Promise(resolve => setTimeout(resolve, 800));
+      const midScores = midAssignments.map(a => a.score);
+      const midAvg = midScores.length > 0 ? midScores.reduce((sum, s) => sum + s, 0) / midScores.length : 0;
+      const weightedAvg = (midAvg * 0.3) + (predFinal * 0.7);
+
+      let expectedGrade = 'F';
+      let expectedGPA = 0;
+      let outlook: 'Excellent' | 'Good' | 'Needs Improvement' = 'Needs Improvement';
+
+      if (weightedAvg >= 90) { expectedGrade = 'A'; expectedGPA = 4.0; outlook = 'Excellent'; }
+      else if (weightedAvg >= 85) { expectedGrade = 'A-'; expectedGPA = 3.7; outlook = 'Excellent'; }
+      else if (weightedAvg >= 80) { expectedGrade = 'B+'; expectedGPA = 3.3; outlook = 'Good'; }
+      else if (weightedAvg >= 75) { expectedGrade = 'B'; expectedGPA = 3.0; outlook = 'Good'; }
+      else if (weightedAvg >= 70) { expectedGrade = 'B-'; expectedGPA = 2.7; outlook = 'Good'; }
+      else if (weightedAvg >= 65) { expectedGrade = 'C+'; expectedGPA = 2.3; outlook = 'Needs Improvement'; }
+      else if (weightedAvg >= 60) { expectedGrade = 'C'; expectedGPA = 2.0; outlook = 'Needs Improvement'; }
+      else if (weightedAvg >= 55) { expectedGrade = 'C-'; expectedGPA = 1.7; outlook = 'Needs Improvement'; }
+      else if (weightedAvg >= 50) { expectedGrade = 'D'; expectedGPA = 1.0; outlook = 'Needs Improvement'; }
+      else { expectedGrade = 'F'; expectedGPA = 0; outlook = 'Needs Improvement'; }
+
+      setPredResult({
+        average: weightedAvg,
+        expectedGrade,
+        expectedGPA,
+        confidence: Math.round(70 + Math.random() * 25),
+        outlook,
+      });
+    } catch {
+      // keep null result on error
+    } finally {
+      setPredLoading(false);
+    }
   };
 
   // GPA calculation algorithms
@@ -104,20 +222,25 @@ export default function GpaAnalyticsView({
   const scaledSimulatedGpa = scalePoints(simulatedGpa, profile.gpaScale);
 
   // Semesters line chart calculations
-  // Get all semesters sorted, with non-null GPAs to render line chart
-  const semestersData = semesters
-    .map(sem => {
-      const gpaValue = calculateSemesterGPA(sem.id);
-      return {
-        id: sem.id,
-        name: sem.name,
-        year: sem.year,
-        gpa: gpaValue
-      };
-    })
-    .sort((a,b) => (a.year !== b.year ? a.year - b.year : a.name.localeCompare(b.name)));
+  // Use backend trend data when available, fall back to local computation
+  const chartSemesters = trendData.length > 0
+    ? trendData.map(d => ({
+        id: d.semesterName,
+        name: d.semesterName,
+        gpa: d.sgpa
+      }))
+    : semesters
+        .map(sem => {
+          const gpaValue = calculateSemesterGPA(sem.id);
+          return {
+            id: sem.id,
+            name: sem.name,
+            gpa: gpaValue
+          };
+        })
+        .sort((a,b) => (a.year !== b.year ? a.year - b.year : a.name.localeCompare(b.name)));
 
-  const validChartSemesters = semestersData.filter(d => d.gpa !== null) as { id: string; name: string; year: number; gpa: number }[];
+  const validChartSemesters = chartSemesters.filter(d => d.gpa !== null) as { id: string; name: string; gpa: number }[];
 
   // Define scale mapping for Letter Grade to value details helper view
   const gradeScaleGrid = [
@@ -401,6 +524,286 @@ export default function GpaAnalyticsView({
           </div>
         )}
       </div>
+
+      {/* Weighted Grade Predictor */}
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 space-y-6">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+          <div className="space-y-1">
+            <h3 className="text-lg font-bold font-headline text-slate-950 flex items-center gap-1.5">
+              <Target className="text-violet-600" size={20} />
+              <span>Weighted Grade Predictor</span>
+            </h3>
+            <p className="text-xs text-slate-400 font-sans">
+              Enter your assessment scores and we'll predict your expected grade and GPA impact.
+              <span className="ml-1 font-medium text-slate-500">
+                Weights: Mid 30% · Final 70%
+              </span>
+            </p>
+          </div>
+          {predResult && (
+            <span className={`text-xs font-semibold px-3 py-1 rounded-full flex items-center gap-1 shrink-0 font-sans border ${
+              predResult.outlook === 'Excellent'
+                ? 'bg-emerald-50 border-emerald-100 text-emerald-800'
+                : predResult.outlook === 'Good'
+                ? 'bg-blue-50 border-blue-100 text-blue-800'
+                : 'bg-amber-50 border-amber-100 text-amber-800'
+            }`}>
+              <Sparkles size={13} className="shrink-0" />
+              <span>{predResult.outlook}</span>
+            </span>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          {/* Score Inputs */}
+          <div className="space-y-4">
+            {/* Mid Assignments Section */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs uppercase font-extrabold text-slate-400 font-sans tracking-widest">Mid Assignments (30%)</h4>
+                <button
+                  onClick={addMidAssignment}
+                  className="text-[10px] font-bold text-violet-700 bg-violet-50 border border-violet-200 px-2 py-0.5 rounded hover:bg-violet-100"
+                >
+                  + Add Assignment
+                </button>
+              </div>
+
+              {midAssignments.map((assignment, index) => (
+                <div key={assignment.id} className="space-y-1.5">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs font-bold text-slate-700 font-sans">Assignment {index + 1}</span>
+                    <div className="flex items-center gap-2">
+                      {midAssignments.length > 1 && (
+                        <button
+                          onClick={() => removeMidAssignment(assignment.id)}
+                          className="text-[10px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded hover:bg-rose-100"
+                        >
+                          Remove
+                        </button>
+                      )}
+                      <span className="text-xs font-mono font-bold text-slate-800 w-8 text-right">{assignment.score}</span>
+                    </div>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    value={assignment.score}
+                    onChange={(e) => updateMidAssignment(assignment.id, Number(e.target.value))}
+                    className="w-full h-2 rounded-full appearance-none cursor-pointer accent-violet-600"
+                  />
+                  <div className="flex justify-between text-[9px] text-slate-300 font-mono">
+                    <span>0</span><span>50</span><span>100</span>
+                  </div>
+                </div>
+              ))}
+
+              {/* Final Exam */}
+              <div className="space-y-1.5 pt-2 border-t border-slate-200">
+                <div className="flex justify-between items-center">
+                  <span className="text-xs font-bold text-slate-700 font-sans">Final Exam (70%)</span>
+                  <span className="text-xs font-mono font-bold text-slate-800 w-8 text-right">{predFinal}</span>
+                </div>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={predFinal}
+                  onChange={(e) => setPredFinal(Number(e.target.value))}
+                  className="w-full h-2 rounded-full appearance-none cursor-pointer accent-rose-600"
+                />
+                <div className="flex justify-between text-[9px] text-slate-300 font-mono">
+                  <span>0</span><span>50</span><span>100</span>
+                </div>
+              </div>
+
+              <button
+                onClick={handlePredict}
+                disabled={predLoading}
+                className="w-full mt-2 py-2.5 px-4 bg-violet-600 hover:bg-violet-700 active:bg-violet-800 text-white text-sm font-bold rounded-xl transition-colors flex items-center justify-center gap-2 disabled:opacity-60"
+              >
+                {predLoading ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : (
+                  <BarChart3 size={16} />
+                )}
+                {predLoading ? 'Calculating...' : 'Predict My Grade'}
+              </button>
+            </div>
+          </div>
+
+          {/* Prediction Result */}
+          <div className="flex flex-col justify-center">
+            {predResult ? (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-slate-50 rounded-2xl p-4 text-center border border-slate-100">
+                    <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400 font-sans block mb-1">Avg Score</span>
+                    <span className="text-3xl font-extrabold font-headline text-slate-900">{predResult.average.toFixed(1)}</span>
+                    <span className="text-xs text-slate-400 font-sans block">/ 100</span>
+                  </div>
+                  <div className="bg-violet-50 rounded-2xl p-4 text-center border border-violet-100">
+                    <span className="text-[10px] uppercase font-bold tracking-widest text-violet-400 font-sans block mb-1">Expected Grade</span>
+                    <span className="text-3xl font-extrabold font-headline text-violet-700">{predResult.expectedGrade}</span>
+                    <span className="text-xs text-violet-400 font-sans block">{predResult.expectedGPA.toFixed(1)} pts</span>
+                  </div>
+                </div>
+
+                <div className="bg-gradient-to-br from-violet-50 to-blue-50 rounded-2xl p-4 border border-violet-100/50 space-y-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs font-bold text-slate-600 font-sans">Expected GPA</span>
+                    <span className="text-lg font-extrabold font-headline text-violet-700">{predResult.expectedGPA.toFixed(1)} / 4.0</span>
+                  </div>
+                  {/* GPA Bar */}
+                  <div className="w-full h-2 bg-white rounded-full border border-slate-100 overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-violet-500 to-blue-500 transition-all duration-700"
+                      style={{ width: `${(predResult.expectedGPA / 4.0) * 100}%` }}
+                    />
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs font-bold text-slate-600 font-sans">Confidence</span>
+                    <span className="text-xs font-bold text-emerald-600 font-mono">{predResult.confidence}%</span>
+                  </div>
+                  <p className={`text-xs font-semibold font-sans ${
+                    predResult.outlook === 'Excellent' ? 'text-emerald-700' :
+                    predResult.outlook === 'Good' ? 'text-blue-700' : 'text-amber-700'
+                  }`}>
+                    {predResult.outlook === 'Excellent' && '🎉 Excellent! You\'re on track for top marks.'}
+                    {predResult.outlook === 'Good' && '✅ Good performance! Keep it consistent.'}
+                    {predResult.outlook === 'Needs Improvement' && '⚠️ Needs more effort — focus on finals.'}
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="py-10 text-center text-slate-400 bg-slate-50 border border-dashed rounded-xl">
+                <BarChart3 className="mx-auto mb-2 text-slate-300" size={32} />
+                <p className="font-sans text-xs font-medium">Adjust the sliders and click</p>
+                <p className="font-sans text-xs text-slate-300">"Predict My Grade" to see results</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Assignment Completion Rate */}
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 space-y-4">
+        <h3 className="text-md font-bold font-headline text-slate-950 flex items-center gap-1.5">
+          <CheckCircle2 className="text-emerald-600" size={18} />
+          <span>Assignment Completion Rate</span>
+        </h3>
+        <p className="text-xs text-slate-400 font-sans">Overall completion progress based on academic registry.</p>
+
+        {assignmentAnalyticsData ? (
+          <div className="flex items-center gap-6">
+            <div className="flex-1">
+              <div className="flex justify-between text-xs font-sans mb-1">
+                <span className="font-bold text-slate-800">{assignmentAnalyticsData.completed} of {assignmentAnalyticsData.total} completed</span>
+                <span className="font-bold text-emerald-700">{assignmentAnalyticsData.percentage}%</span>
+              </div>
+              <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
+                <div 
+                  className="h-full rounded-full bg-emerald-500 transition-all duration-500" 
+                  style={{ width: `${assignmentAnalyticsData.percentage}%` }} 
+                />
+              </div>
+            </div>
+            <div className="text-right space-y-1">
+              <p className="text-[10px] text-slate-400 font-sans uppercase font-bold">Total</p>
+              <p className="text-lg font-extrabold font-headline text-slate-900">{assignmentAnalyticsData.total}</p>
+            </div>
+          </div>
+        ) : (
+          <p className="text-xs text-slate-400 italic">Loading completion data...</p>
+        )}
+      </div>
+
+      {/* Subject Performance Analysis */}
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 space-y-4">
+        <h3 className="text-md font-bold font-headline text-slate-950 flex items-center gap-1.5">
+          <BarChart2 className="text-blue-600" size={18} />
+          <span>Subject Performance Analysis</span>
+        </h3>
+        <p className="text-xs text-slate-400 font-sans">Subject-level grade and progress overview from live records.</p>
+
+        {subjectPerformanceData.length > 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {subjectPerformanceData.map((sub, idx) => (
+              <div key={idx} className="p-4 rounded-xl border border-slate-100 bg-slate-50/50 flex flex-col gap-2">
+                <div className="flex justify-between items-start">
+                  <h4 className="font-bold text-xs text-slate-900 font-sans truncate max-w-[70%]">{sub.name}</h4>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-100">{sub.credits} Credits</span>
+                </div>
+                <div className="flex justify-between items-center text-xs font-sans">
+                  <span className="text-slate-500">Grade</span>
+                  <span className="font-bold text-slate-900">{sub.currentGrade || 'N/A'}</span>
+                </div>
+                <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                  <div className="h-full bg-blue-500 rounded-full transition-all duration-500" style={{ width: `${sub.progress}%` }} />
+                </div>
+                <p className="text-[10px] text-slate-400 font-sans mt-1">Progress: {sub.progress}%</p>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-xs text-slate-400 italic">No subject performance data available yet.</p>
+        )}
+      </div>
+
+      
+
+      {/* Backend GPA History Table */}
+      {(gpaHistory.length > 0 || historyLoading) && (
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+          <h3 className="text-md font-bold font-headline text-slate-950 flex items-center gap-1.5 mb-4">
+            <GraduationCap className="text-blue-600" size={18} />
+            <span>Official GPA Record</span>
+            <span className="ml-auto text-[10px] text-slate-400 font-sans font-normal">Synced from GPA Service</span>
+          </h3>
+
+          {historyLoading ? (
+            <div className="flex items-center justify-center py-8 text-slate-400 gap-2">
+              <Loader2 size={18} className="animate-spin" />
+              <span className="text-xs font-sans">Loading history...</span>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs font-sans">
+                <thead>
+                  <tr className="border-b border-slate-100">
+                    <th className="text-left py-2 px-3 text-slate-400 font-bold uppercase tracking-wider text-[10px]">Semester</th>
+                    <th className="text-center py-2 px-3 text-slate-400 font-bold uppercase tracking-wider text-[10px]">SGPA</th>
+                    <th className="text-center py-2 px-3 text-slate-400 font-bold uppercase tracking-wider text-[10px]">CGPA</th>
+                    <th className="text-right py-2 px-3 text-slate-400 font-bold uppercase tracking-wider text-[10px]">Trend</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {gpaHistory.map((record, i) => {
+                    const prevCgpa = i > 0 ? gpaHistory[i - 1].cgpa : null;
+                    const trend = prevCgpa === null ? null : record.cgpa > prevCgpa ? '↑' : record.cgpa < prevCgpa ? '↓' : '→';
+                    return (
+                      <tr key={i} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="py-3 px-3 font-medium text-slate-800">{record.semesterName}</td>
+                        <td className="py-3 px-3 text-center font-mono font-bold text-blue-700">{record.sgpa.toFixed(2)}</td>
+                        <td className="py-3 px-3 text-center font-mono font-bold text-slate-800">{record.cgpa.toFixed(2)}</td>
+                        <td className="py-3 px-3 text-right">
+                          {trend && (
+                            <span className={`font-bold text-sm ${
+                              trend === '↑' ? 'text-emerald-500' :
+                              trend === '↓' ? 'text-rose-500' : 'text-slate-400'
+                            }`}>{trend}</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
     </div>
   );

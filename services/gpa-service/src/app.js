@@ -17,4 +17,13 @@ app.get("/health", (req, res) => {
   });
 });
 
+const gpaRoutes = require("./routes/gpa.routes");
+
+app.use("/api", gpaRoutes);
+
+// 404 handler
+app.use((req, res) => {
+  res.status(404).json({ message: "Route not found" });
+});
+
 module.exports = app;

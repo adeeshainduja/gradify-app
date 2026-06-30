@@ -7,6 +7,7 @@ const semesterRoutes  = require("./routes/semester.routes");
 const subjectRoutes   = require("./routes/subject.routes");
 const assignmentRoutes = require("./routes/assignment.routes");
 const examRoutes      = require("./routes/exam.routes");
+const analyticsRoutes   = require("./routes/analytics.routes");
 
 const app = express();
 
@@ -35,6 +36,9 @@ app.use("/api/academic", assignmentRoutes);
 
 // Exam routes
 app.use("/api/academic", examRoutes);
+
+// Analytics routes
+app.use("/api/academic", analyticsRoutes);
 
 // 404 handler
 app.use((req, res) => {

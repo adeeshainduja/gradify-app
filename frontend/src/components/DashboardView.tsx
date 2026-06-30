@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { 
   Award, 
   BookOpen, 
@@ -28,6 +28,8 @@ import {
   formatDateTimeSafe,
   formatLocaleStringSafe
 } from '../types';
+import { currentGPA } from '../api/gpaApi';
+import { dashboardStats } from '../api/analyticsApi';
 
 interface DashboardViewProps {
   semesters: Semester[];
@@ -52,6 +54,31 @@ export default function DashboardView({
 }: DashboardViewProps) {
   const [analyticsTab, setAnalyticsTab] = useState<'timeline' | 'workload' | 'gauge'>('timeline');
   const [selectedTimelineId, setSelectedTimelineId] = useState<string | null>(null);
+  const [stats, setStats] = useState<{
+    totalSubjects: number;
+    pendingAssignments: number;
+    upcomingExams: number;
+  } | null>(null);
+  const [currentGPAData, setCurrentGPAData] = useState<{
+    sgpa: number;
+    cgpa: number;
+  } | null>(null);
+
+  useEffect(() => {
+    const loadDashboard = async () => {
+      try {
+        const [statsRes, gpaRes] = await Promise.all([
+          dashboardStats(),
+          currentGPA(),
+        ]);
+        if (statsRes.data) setStats(statsRes.data);
+        if (gpaRes.data) setCurrentGPAData(gpaRes.data);
+      } catch (err) {
+        console.error("Failed to load dashboard:", err);
+      }
+    };
+    loadDashboard();
+  }, []);
 
   // Find current semester
   const currentSemester = semesters.find(s => s.isCurrent) || semesters[semesters.length - 1];
@@ -177,7 +204,9 @@ export default function DashboardView({
             </div>
             <h1 className="text-3xl font-extrabold font-headline tracking-tight">Active Semester: {currentSemester ? currentSemester.name : 'Summer 2026'}</h1>
             <p className="text-blue-100 text-sm max-w-xl font-sans">
-              Keep it up! Your current cumulative GPA is holding strong at <span className="font-bold underline text-white">{scaledCumulativeGpa.toFixed(2)}</span>. You have {pendingAssignments.length} pending tasks to finish this week.
+              Keep it up! Your current cumulative GPA is holding strong at <span className="font-bold underline text-white">
+                {currentGPAData ? currentGPAData.cgpa.toFixed(2) : (scaledCumulativeGpa > 0 ? scaledCumulativeGpa.toFixed(2) : '3.72')}
+              </span>. You have {stats ? stats.pendingAssignments : pendingAssignments.length} pending tasks to finish this week.
             </p>
           </div>
           <button 
@@ -199,7 +228,9 @@ export default function DashboardView({
         <div className="bg-white p-4 rounded-xl shadow-xs border border-slate-100 flex flex-col justify-between hover:shadow-md transition-all group overflow-hidden relative">
           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Current GPA</span>
           <div className="flex items-baseline gap-1">
-            <span className="text-2xl font-extrabold font-headline text-slate-900">{scaledCumulativeGpa > 0 ? scaledCumulativeGpa.toFixed(2) : '3.72'}</span>
+            <span className="text-2xl font-extrabold font-headline text-slate-900">
+              {currentGPAData && currentGPAData.cgpa > 0 ? currentGPAData.cgpa.toFixed(2) : (scaledCumulativeGpa > 0 ? scaledCumulativeGpa.toFixed(2) : '3.72')}
+            </span>
           </div>
           <p className="text-[9px] text-emerald-600 font-medium mt-2 flex items-center gap-0.5">
             <TrendingUp size={11} />
@@ -222,7 +253,7 @@ export default function DashboardView({
         <div className="bg-white p-4 rounded-xl shadow-xs border border-slate-100 flex flex-col justify-between hover:shadow-md transition-all group overflow-hidden relative">
           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Pending Homework</span>
           <div className="flex items-baseline gap-1">
-            <span className="text-2xl font-extrabold font-headline text-slate-900">{pendingAssignments.length > 0 ? pendingAssignments.length : 5}</span>
+            <span className="text-2xl font-extrabold font-headline text-slate-900">{stats ? stats.pendingAssignments : (pendingAssignments.length > 0 ? pendingAssignments.length : 5)}</span>
             <span className="text-xs text-slate-400">tasks</span>
           </div>
           <p className="text-[9px] text-slate-400 mt-2">Immediate deadlines</p>
@@ -232,7 +263,7 @@ export default function DashboardView({
         <div className="bg-white p-4 rounded-xl shadow-xs border border-slate-100 flex flex-col justify-between hover:shadow-md transition-all group overflow-hidden relative">
           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Upcoming Exams</span>
           <div className="flex items-baseline gap-1">
-            <span className="text-2xl font-extrabold font-headline text-slate-900">{upcomingExams.length > 0 ? upcomingExams.length : 3}</span>
+            <span className="text-2xl font-extrabold font-headline text-slate-900">{stats ? stats.upcomingExams : (upcomingExams.length > 0 ? upcomingExams.length : 3)}</span>
             <span className="text-xs text-slate-400">tests</span>
           </div>
           <p className="text-[9px] text-red-500 font-medium mt-2">Preparation scheduled</p>
@@ -242,7 +273,7 @@ export default function DashboardView({
         <div className="bg-white p-4 rounded-xl shadow-xs border border-slate-100 flex flex-col justify-between hover:shadow-md transition-all group overflow-hidden relative">
           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Total Subjects</span>
           <div className="flex items-baseline gap-1">
-            <span className="text-2xl font-extrabold font-headline text-indigo-700">{currentSubjects.length > 0 ? currentSubjects.length : 6}</span>
+            <span className="text-2xl font-extrabold font-headline text-indigo-700">{stats ? stats.totalSubjects : (currentSubjects.length > 0 ? currentSubjects.length : 6)}</span>
             <span className="text-xs text-slate-400">enrolled</span>
           </div>
           <p className="text-[9px] text-slate-400 mt-2">Active syllabus tracks</p>

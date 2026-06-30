@@ -6,3 +6,14 @@ datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
+
+model GpaRecord {
+  id           Int      @id @default(autoincrement())
+  userId       Int
+  semesterId   Int
+  semesterName String
+  sgpa         Float
+  cgpa         Float
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
