@@ -7,13 +7,190 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model GpaRecord {
-  id           Int      @id @default(autoincrement())
+enum SemesterStatus {
+  ACTIVE
+  COMPLETED
+  ARCHIVED
+}
+
+enum SubjectStatus {
+  ACTIVE
+  COMPLETED
+  DROPPED
+}
+
+enum AssignmentStatus {
+  PENDING
+  SUBMITTED
+  GRADED
+  OVERDUE
+}
+
+enum AssignmentPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum ExamStatus {
+  UPCOMING
+  COMPLETED
+  CANCELLED
+}
+
+enum ExamType {
+  MID
+  FINAL
+  QUIZ
+  PRACTICAL
+  VIVA
+}
+
+model Semester {
+  id           Int            @id @default(autoincrement())
+  name         String
+  academicYear String
+  startDate    DateTime
+  endDate      DateTime
+  status       SemesterStatus
   userId       Int
-  semesterId   Int
-  semesterName String
-  sgpa         Float
-  cgpa         Float
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  subjects Subject[]
+}
+
+model Subject {
+  id             Int           @id @default(autoincrement())
+  code           String
+  name           String
+  credits        Int
+  lecturer       String?
+  professorEmail String?
+  description    String?
+  currentGrade   String?
+  progress       Int           @default(0)
+  status         SubjectStatus
+  color          String        @default("blue")
+  room           String?
+  schedule       String?
+  targetGrade    String        @default("A")
+  semesterId     Int
+  userId         Int
+
+  semester    Semester     @relation(fields: [semesterId], references: [id], onDelete: Cascade)
+  assignments Assignment[]
+  exams       Exam[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Assignment {
+  id          Int                @id @default(autoincrement())
+  title       String
+  description String?
+  dueDate     DateTime
+  priority    AssignmentPriority @default(MEDIUM)
+  status      AssignmentStatus   @default(PENDING)
+  progress    Int                @default(0)
+  marks       Float?
+  maxMarks    Float              @default(100)
+  weight      Float              @default(0)
+  isGroup     Boolean            @default(false)
+  subjectId   Int
+  userId      Int
+
+  subject Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Exam {
+  id            Int        @id @default(autoincrement())
+  title         String
+  examType      ExamType   @default(FINAL)
+  examDate      DateTime
+  startTime     String     @default("09:00")
+  duration      Int        @default(120)
+  venue         String?
+  totalMarks    Float      @default(100)
+  obtainedMarks Float?
+  grade         String?
+  feedback      String?
+  notes         String?
+  weight        Float      @default(0)
+  status        ExamStatus @default(UPCOMING)
+  subjectId     Int
+  userId        Int
+
+  subject Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Role {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  createdAt   DateTime @default(now())
+
+  users User[]
+}
+
+model User {
+  id            Int      @id @default(autoincrement())
+  firstName     String
+  lastName      String
+  email         String   @unique
+  password      String
+
+  roleId        Int
+  role          Role     @relation(fields: [roleId], references: [id])
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+enum GradeLetter {
+  A_PLUS
+  A
+  A_MINUS
+  B_PLUS
+  B
+  B_MINUS
+  C_PLUS
+  C
+  C_MINUS
+  D_PLUS
+  D
+  E
+  F
+}
+
+model Grade {
+  id          Int         @id @default(autoincrement())
+  studentId   Int
+  semesterId  Int
+  subjectId   Int
+  letterGrade GradeLetter
+  gradePoint  Float
+  createdAt   DateTime    @default(now())
+
+  @@unique([studentId, subjectId])
+}
+
+model GPARecord {
+  id              Int      @id @default(autoincrement())
+  studentId       Int
+  semesterId      Int
+  semesterName    String
+  totalCredits    Int
+  totalPoints     Float
+  sgpa            Float
+  cgpa            Float
+  calculatedAt    DateTime @default(now())
+
+  @@unique([studentId, semesterId])
 }

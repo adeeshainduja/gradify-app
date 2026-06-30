@@ -1,7 +1,11 @@
-﻿const express = require("express");
+const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
 const morgan = require("morgan");
+
+const gpaRoutes = require("./routes/gpa.routes");
+const historyRoutes = require("./routes/history.routes");
+const predictRoutes = require("./routes/predict.routes");
 
 const app = express();
 
@@ -17,9 +21,9 @@ app.get("/health", (req, res) => {
   });
 });
 
-const gpaRoutes = require("./routes/gpa.routes");
-
-app.use("/api", gpaRoutes);
+app.use("/api/gpa", gpaRoutes);
+app.use("/api/gpa", historyRoutes);
+app.use("/api/gpa", predictRoutes);
 
 // 404 handler
 app.use((req, res) => {

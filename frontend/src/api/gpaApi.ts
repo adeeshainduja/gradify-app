@@ -1,18 +1,33 @@
 import axios from "axios";
 
-const api = axios.create({
-    baseURL: import.meta.env.VITE_GPA_API,
-    headers: { "Content-Type": "application/json" }
+// Dedicated GPA Service axios instance
+const gpaAxios = axios.create({
+  baseURL: import.meta.env.VITE_GPA_API,
+  headers: {
+    "Content-Type": "application/json"
+  }
 });
 
-api.interceptors.request.use((config) => {
-    const token = localStorage.getItem("token");
-    if (token) config.headers.Authorization = `Bearer ${token}`;
-    return config;
+// Attach JWT token to every request
+gpaAxios.interceptors.request.use((config) => {
+  const token = localStorage.getItem("token");
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
 });
 
 export const currentGPA = () =>
-    api.get("/current");
+  gpaAxios.get("/current");
 
 export const gpaTrend = () =>
-    api.get("/trend");
+  gpaAxios.get("/trend");
+
+export const calculateGPA = (data: any) =>
+  gpaAxios.post("/calculate", data);
+
+export const getHistory = () =>
+  gpaAxios.get("/history");
+
+export const predictGPA = (data: any) =>
+  gpaAxios.post("/predict", data);

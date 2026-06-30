@@ -1,9 +1,14 @@
 const router = require("express").Router();
-
-const auth = require("../middleware/auth.middleware");
 const controller = require("../controllers/gpa.controller");
+const auth = require("../middleware/auth.middleware");
 
-router.get("/gpa/current", auth, controller.current);
-router.get("/gpa/trend", auth, controller.trend);
+// Get current GPA
+router.get("/current", auth, controller.current);
+
+// Get GPA trend
+router.get("/trend", auth, controller.trend);
+
+// Calculate SGPA & CGPA for a semester
+router.post("/calculate", auth, controller.calculateGPA);
 
 module.exports = router;

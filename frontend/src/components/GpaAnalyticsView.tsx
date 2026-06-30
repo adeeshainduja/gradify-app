@@ -23,7 +23,7 @@ import {
   AVAILABLE_GRADES, 
   GradeType 
 } from '../types';
-import { gpaTrend } from '../api/gpaApi';
+import { gpaTrend, getHistory, predictGPA } from '../api/gpaApi';
 import { assignmentAnalytics, subjectPerformance } from '../api/analyticsApi';
 
 interface GpaAnalyticsViewProps {
@@ -66,42 +66,43 @@ export default function GpaAnalyticsView({
     currentGrade: string;
     progress: number;
   }[]>([]);
-  const [gpaHistory, setGpaHistory] = useState<{
-    semesterName: string;
-    sgpa: number;
-    cgpa: number;
-  }[]>([]);
+  
+  // ── Backend GPA History ─────────────────────────────────────────────────────
+  const [gpaHistory, setGpaHistory] = useState<{semesterName: string; sgpa: number; cgpa: number}[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
 
-  // Weighted Grade Predictor state
-  const [midAssignments, setMidAssignments] = useState<{ id: string; score: number; weight: number }[]>([
-    { id: 'mid-1', score: 50, weight: 30 }
+  // ── Weighted Prediction (Backend) ───────────────────────────────────────────
+  const [midAssignments, setMidAssignments] = useState<Array<{id: string, score: number}>>([
+    { id: '1', score: 80 },
+    { id: '2', score: 75 },
+    { id: '3', score: 78 }
   ]);
-  const [predFinal, setPredFinal] = useState<number>(50);
-  const [finalWeight, setFinalWeight] = useState<number>(70);
+  const [predFinal, setPredFinal] = useState<number>(85);
+  
   const [predResult, setPredResult] = useState<{
     average: number;
     expectedGrade: string;
     expectedGPA: number;
     confidence: number;
-    outlook: 'Excellent' | 'Good' | 'Needs Improvement';
+    outlook: string;
   } | null>(null);
   const [predLoading, setPredLoading] = useState(false);
 
   useEffect(() => {
     const loadAnalytics = async () => {
       try {
-        const [trendRes, assignmentsRes, subjectsRes] = await Promise.all([
+        const [trendRes, assignmentsRes, subjectsRes, historyRes] = await Promise.all([
           gpaTrend(),
           assignmentAnalytics(),
           subjectPerformance(),
+          getHistory().catch(() => ({ data: [] }))
         ]);
         if (trendRes.data) {
           setTrendData(trendRes.data);
-          setGpaHistory(trendRes.data);
         }
         if (assignmentsRes.data) setAssignmentAnalyticsData(assignmentsRes.data);
         if (subjectsRes.data) setSubjectPerformanceData(subjectsRes.data);
+        if (historyRes && historyRes.data) setGpaHistory(historyRes.data);
       } catch (err) {
         console.error("Failed to load analytics:", err);
       }
@@ -115,83 +116,34 @@ export default function GpaAnalyticsView({
 
   // ── Weighted Grade Predictor Handlers ──────────────────────────────────────
   const addMidAssignment = () => {
-    const total = midAssignments.reduce((sum, a) => sum + a.weight, 0);
-    const remaining = Math.max(0, 30 - total);
-    const newWeight = midAssignments.length === 0 ? remaining : Math.floor(remaining / (midAssignments.length + 1));
-    
-    setMidAssignments(prev => {
-      const distributeRemaining = (items: { id: string; score: number; weight: number }[], extra: number) => {
-        if (items.length === 0) return items;
-        const addEach = Math.floor(extra / items.length);
-        const leftover = extra % items.length;
-        return items.map((a, i) => ({ ...a, weight: a.weight + addEach + (i < leftover ? 1 : 0) }));
-      };
-      
-      const updated = distributeRemaining(prev, remaining - newWeight);
-      return [...updated, { id: `mid-${Date.now()}`, score: 50, weight: Math.max(0, newWeight) }];
-    });
+    setMidAssignments([
+      ...midAssignments,
+      { id: Date.now().toString(), score: 80 }
+    ]);
   };
 
   const removeMidAssignment = (id: string) => {
-    setMidAssignments(prev => {
-      const filtered = prev.filter(a => a.id !== id);
-      const removed = prev.find(a => a.id === id)?.weight || 0;
-      const distributeRemaining = (items: { id: string; score: number; weight: number }[], extra: number) => {
-        if (items.length === 0) return items;
-        const addEach = Math.floor(extra / items.length);
-        const leftover = extra % items.length;
-        return items.map((a, i) => ({ ...a, weight: a.weight + addEach + (i < leftover ? 1 : 0) }));
-      };
-      return distributeRemaining(filtered, removed);
-    });
+    if (midAssignments.length > 1) {
+      setMidAssignments(midAssignments.filter(a => a.id !== id));
+    }
   };
 
   const updateMidAssignment = (id: string, score: number) => {
-    setMidAssignments(prev => prev.map(a => a.id === id ? { ...a, score } : a));
-  };
-
-  const updateMidAssignmentWeight = (id: string, weight: number) => {
-    setMidAssignments(prev => prev.map(a => a.id === id ? { ...a, weight: Math.max(0, Math.min(100, weight)) } : a));
+    setMidAssignments(midAssignments.map(a => 
+      a.id === id ? { ...a, score } : a
+    ));
   };
 
   const handlePredict = async () => {
-    setPredLoading(true);
-    setPredResult(null);
-
     try {
-      await new Promise(resolve => setTimeout(resolve, 800));
-      const midTotalWeight = midAssignments.reduce((sum, a) => sum + a.weight, 0);
-      const weightedSum = midAssignments.reduce((sum, a) => sum + (a.score * a.weight), 0);
-      const midComponent = midTotalWeight > 0 ? weightedSum / midTotalWeight : 0;
-      const totalWeight = midTotalWeight + finalWeight;
-      const midFactor = totalWeight > 0 ? midTotalWeight / totalWeight : 0.3;
-      const finalFactor = totalWeight > 0 ? finalWeight / totalWeight : 0.7;
-      const weightedAvg = (midComponent * midFactor) + (predFinal * finalFactor);
-
-      let expectedGrade = 'F';
-      let expectedGPA = 0;
-      let outlook: 'Excellent' | 'Good' | 'Needs Improvement' = 'Needs Improvement';
-
-      if (weightedAvg >= 90) { expectedGrade = 'A'; expectedGPA = 4.0; outlook = 'Excellent'; }
-      else if (weightedAvg >= 85) { expectedGrade = 'A-'; expectedGPA = 3.7; outlook = 'Excellent'; }
-      else if (weightedAvg >= 80) { expectedGrade = 'B+'; expectedGPA = 3.3; outlook = 'Good'; }
-      else if (weightedAvg >= 75) { expectedGrade = 'B'; expectedGPA = 3.0; outlook = 'Good'; }
-      else if (weightedAvg >= 70) { expectedGrade = 'B-'; expectedGPA = 2.7; outlook = 'Good'; }
-      else if (weightedAvg >= 65) { expectedGrade = 'C+'; expectedGPA = 2.3; outlook = 'Needs Improvement'; }
-      else if (weightedAvg >= 60) { expectedGrade = 'C'; expectedGPA = 2.0; outlook = 'Needs Improvement'; }
-      else if (weightedAvg >= 55) { expectedGrade = 'C-'; expectedGPA = 1.7; outlook = 'Needs Improvement'; }
-      else if (weightedAvg >= 50) { expectedGrade = 'D'; expectedGPA = 1.0; outlook = 'Needs Improvement'; }
-      else { expectedGrade = 'F'; expectedGPA = 0; outlook = 'Needs Improvement'; }
-
-      setPredResult({
-        average: weightedAvg,
-        expectedGrade,
-        expectedGPA,
-        confidence: Math.round(70 + Math.random() * 25),
-        outlook,
+      setPredLoading(true);
+      const response = await predictGPA({
+        midAssignments: midAssignments.map(a => ({ score: a.score })),
+        final: predFinal
       });
-    } catch {
-      // keep null result on error
+      setPredResult(response.data);
+    } catch (err: any) {
+      console.error('Prediction failed:', err?.response?.data?.message || err.message);
     } finally {
       setPredLoading(false);
     }
@@ -271,7 +223,7 @@ export default function GpaAnalyticsView({
             gpa: gpaValue
           };
         })
-        .sort((a,b) => (a.year !== b.year ? a.year - b.year : a.name.localeCompare(b.name)));
+        .sort((a,b) => (a.name.localeCompare(b.name)));
 
   const validChartSemesters = chartSemesters.filter(d => d.gpa !== null) as { id: string; name: string; gpa: number }[];
 
@@ -518,9 +470,9 @@ export default function GpaAnalyticsView({
                       {/* Selection select menu */}
                       <div className="relative">
                         <select
-                          value={subPointScore}
-                          onChange={(e) => handlePredictGradeChange(sub.id, e.target.value as GradeType)}
-                          className="text-xs font-bold font-mono text-blue-700 bg-white border border-slate-200 focus:border-blue-500 rounded-lg py-1 px-3.5 pr-8 appearance-none cursor-pointer"
+                           value={subPointScore}
+                           onChange={(e) => handlePredictGradeChange(sub.id, e.target.value as GradeType)}
+                           className="text-xs font-bold font-mono text-blue-700 bg-white border border-slate-200 focus:border-blue-500 rounded-lg py-1 px-3.5 pr-8 appearance-none cursor-pointer"
                         >
                           {AVAILABLE_GRADES.filter(g => g !== 'IP').map(g => (
                             <option key={g} value={g}>{g} - ({gradeToPoints(g).toFixed(1)} pts)</option>
@@ -558,7 +510,7 @@ export default function GpaAnalyticsView({
         )}
       </div>
 
-      {/* Weighted Grade Predictor */}
+      {/* ── Weighted GPA Prediction (Backend API) ───────────────────────── */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 space-y-6">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
           <div className="space-y-1">
@@ -566,12 +518,12 @@ export default function GpaAnalyticsView({
               <Target className="text-violet-600" size={20} />
               <span>Weighted Grade Predictor</span>
             </h3>
-             <p className="text-xs text-slate-400 font-sans">
-               Enter your assessment scores and we'll predict your expected grade and GPA impact.
-               <span className="ml-1 font-medium text-slate-500">
-                 Total Mid Weight: {midAssignments.reduce((sum, a) => sum + a.weight, 0)}% · Final: {finalWeight}%
-               </span>
-             </p>
+            <p className="text-xs text-slate-400 font-sans">
+              Enter your assessment scores and we'll predict your expected grade and GPA impact.
+              <span className="ml-1 font-medium text-slate-500">
+                Weights: Mid 30% · Final 70%
+              </span>
+            </p>
           </div>
           {predResult && (
             <span className={`text-xs font-semibold px-3 py-1 rounded-full flex items-center gap-1 shrink-0 font-sans border ${
@@ -593,7 +545,7 @@ export default function GpaAnalyticsView({
             {/* Mid Assignments Section */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <h4 className="text-xs uppercase font-extrabold text-slate-400 font-sans tracking-widest">Mid Assignments</h4>
+                <h4 className="text-xs uppercase font-extrabold text-slate-400 font-sans tracking-widest">Mid Assignments (30%)</h4>
                 <button
                   onClick={addMidAssignment}
                   className="text-[10px] font-bold text-violet-700 bg-violet-50 border border-violet-200 px-2 py-0.5 rounded hover:bg-violet-100"
@@ -604,18 +556,9 @@ export default function GpaAnalyticsView({
 
               {midAssignments.map((assignment, index) => (
                 <div key={assignment.id} className="space-y-1.5">
-                  <div className="flex justify-between items-center gap-2">
+                  <div className="flex justify-between items-center">
                     <span className="text-xs font-bold text-slate-700 font-sans">Assignment {index + 1}</span>
                     <div className="flex items-center gap-2">
-                      <input
-                        type="number"
-                        min={0}
-                        max={100}
-                        value={assignment.weight}
-                        onChange={(e) => updateMidAssignmentWeight(assignment.id, Number(e.target.value))}
-                        className="w-14 text-[10px] font-bold font-mono text-violet-700 bg-white border border-slate-200 rounded px-1 py-0.5 text-center"
-                      />
-                      <span className="text-[10px] text-slate-400 font-sans">%</span>
                       {midAssignments.length > 1 && (
                         <button
                           onClick={() => removeMidAssignment(assignment.id)}
@@ -624,7 +567,7 @@ export default function GpaAnalyticsView({
                           Remove
                         </button>
                       )}
-                      <span className="text-xs font-mono font-bold text-slate-800 w-10 text-right">{assignment.score}</span>
+                      <span className="text-xs font-mono font-bold text-slate-800 w-8 text-right">{assignment.score}</span>
                     </div>
                   </div>
                   <input
@@ -644,18 +587,7 @@ export default function GpaAnalyticsView({
               {/* Final Exam */}
               <div className="space-y-1.5 pt-2 border-t border-slate-200">
                 <div className="flex justify-between items-center">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-slate-700 font-sans">Final Exam</span>
-                    <input
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={finalWeight}
-                      onChange={(e) => setFinalWeight(Number(e.target.value))}
-                      className="w-14 text-[10px] font-bold font-mono text-rose-700 bg-white border border-slate-200 rounded px-1 py-0.5 text-center"
-                    />
-                    <span className="text-[10px] text-slate-400 font-sans">%</span>
-                  </div>
+                  <span className="text-xs font-bold text-slate-700 font-sans">Final Exam (70%)</span>
                   <span className="text-xs font-mono font-bold text-slate-800 w-8 text-right">{predFinal}</span>
                 </div>
                 <input
@@ -693,12 +625,12 @@ export default function GpaAnalyticsView({
                 <div className="grid grid-cols-2 gap-4">
                   <div className="bg-slate-50 rounded-2xl p-4 text-center border border-slate-100">
                     <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400 font-sans block mb-1">Avg Score</span>
-                    <span className="text-3xl font-extrabold font-headline text-slate-900">{predResult.average.toFixed(1)}</span>
+                    <span className="text-3xl font-extrabold font-headline text-slate-950 text-slate-900">{predResult.average.toFixed(1)}</span>
                     <span className="text-xs text-slate-400 font-sans block">/ 100</span>
                   </div>
                   <div className="bg-violet-50 rounded-2xl p-4 text-center border border-violet-100">
                     <span className="text-[10px] uppercase font-bold tracking-widest text-violet-400 font-sans block mb-1">Expected Grade</span>
-                    <span className="text-3xl font-extrabold font-headline text-violet-700">{predResult.expectedGrade}</span>
+                    <span className="text-3xl font-extrabold font-headline text-slate-950 text-violet-700">{predResult.expectedGrade}</span>
                     <span className="text-xs text-violet-400 font-sans block">{predResult.expectedGPA.toFixed(1)} pts</span>
                   </div>
                 </div>
@@ -706,7 +638,7 @@ export default function GpaAnalyticsView({
                 <div className="bg-gradient-to-br from-violet-50 to-blue-50 rounded-2xl p-4 border border-violet-100/50 space-y-3">
                   <div className="flex justify-between items-center">
                     <span className="text-xs font-bold text-slate-600 font-sans">Expected GPA</span>
-                    <span className="text-lg font-extrabold font-headline text-violet-700">{predResult.expectedGPA.toFixed(1)} / 4.0</span>
+                    <span className="text-lg font-extrabold font-headline text-slate-950 text-violet-700">{predResult.expectedGPA.toFixed(1)} / 4.0</span>
                   </div>
                   {/* GPA Bar */}
                   <div className="w-full h-2 bg-white rounded-full border border-slate-100 overflow-hidden">
@@ -804,9 +736,7 @@ export default function GpaAnalyticsView({
         )}
       </div>
 
-      
-
-      {/* Backend GPA History Table */}
+      {/* ── Backend GPA History Table ────────────────────────────────────────── */}
       {(gpaHistory.length > 0 || historyLoading) && (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
           <h3 className="text-md font-bold font-headline text-slate-950 flex items-center gap-1.5 mb-4">
