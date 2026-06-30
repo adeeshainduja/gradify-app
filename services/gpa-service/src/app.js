@@ -1,7 +1,9 @@
-﻿const express = require("express");
+const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
 const morgan = require("morgan");
+
+const gpaRoutes = require("./routes/gpa.routes");
 
 const app = express();
 
@@ -15,6 +17,13 @@ app.get("/health", (req, res) => {
     service: "GPA Service",
     status: "Running"
   });
+});
+
+app.use("/api/gpa", gpaRoutes);
+
+// 404 handler
+app.use((req, res) => {
+  res.status(404).json({ message: "Route not found" });
 });
 
 module.exports = app;
